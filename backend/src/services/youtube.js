@@ -65,10 +65,18 @@ setInterval(() => {
 async function createInnertubeClient() {
   const options = {};
   
-  // 1. If session cookies are provided in the environment, prioritize them for session auth
+  // 1. If session cookies are provided in the environment, prioritize them for session auth.
+  // We use a custom fetch wrapper to inject cookies into EVERY request (including player.js download)
+  // which is critical for the signature decipher functions to load correctly.
   if (process.env.YT_COOKIES) {
-    options.cookie = process.env.YT_COOKIES;
-    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies.');
+    const cookieString = process.env.YT_COOKIES;
+    options.cookie = cookieString;
+    options.fetch = async (input, init = {}) => {
+      const headers = new Headers(init.headers);
+      headers.set('cookie', cookieString);
+      return globalThis.fetch(input, { ...init, headers });
+    };
+    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies (custom fetch).');
     return await Innertube.create(options);
   }
 
