@@ -64,6 +64,14 @@ setInterval(() => {
 // Helper function to create an Innertube client with optional PO Token and Visitor Data
 async function createInnertubeClient() {
   const options = {};
+  
+  // 1. If session cookies are provided in the environment, prioritize them for session auth
+  if (process.env.YT_COOKIES) {
+    options.cookie = process.env.YT_COOKIES;
+    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies.');
+    return await Innertube.create(options);
+  }
+
   const TARGET_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)';
   
   // Use dynamically generated and cached token if available
