@@ -318,7 +318,7 @@ let instancesCacheTime = 0;
 
 /**
  * Dynamically fetch working Invidious instances from the official registry.
- * Falls back to a hardcoded list if the registry is unreachable.
+ * ALWAYS merges with the hardcoded list to ensure maximum coverage.
  */
 async function getInvidiousInstances() {
   const now = Date.now();
@@ -327,6 +327,21 @@ async function getInvidiousInstances() {
     return cachedInvidiousInstances;
   }
 
+  // Hardcoded list of well-known instances (always included)
+  const hardcodedInstances = [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://iv.ggtyler.dev',
+    'https://invidious.protokolas.com',
+    'https://yt.cdaut.de',
+    'https://invidious.privacyredirect.com',
+    'https://invidious.drgns.space',
+    'https://invidious.jing.rocks',
+    'https://invidious.einfachzocken.eu',
+    'https://yewtu.be',
+  ];
+
+  let registryInstances = [];
   try {
     console.log('[Invidious] Fetching instance list from registry...');
     const controller = new AbortController();
@@ -337,34 +352,30 @@ async function getInvidiousInstances() {
     });
     clearTimeout(timeout);
 
-    if (!response.ok) throw new Error(`Registry returned ${response.status}`);
-
-    const instances = await response.json();
-    const httpsInstances = instances
-      .filter(([domain, info]) => info.type === 'https' && info.api === true)
-      .map(([domain, info]) => info.uri || `https://${domain}`)
-      .slice(0, 15);
-
-    if (httpsInstances.length > 0) {
-      console.log(`[Invidious] Discovered ${httpsInstances.length} working API instances.`);
-      cachedInvidiousInstances = httpsInstances;
-      instancesCacheTime = now;
-      return httpsInstances;
+    if (response.ok) {
+      const instances = await response.json();
+      registryInstances = instances
+        .filter(([domain, info]) => info.type === 'https' && info.api === true)
+        .map(([domain, info]) => info.uri || `https://${domain}`)
+        .slice(0, 15);
+      console.log(`[Invidious] Discovered ${registryInstances.length} instances from registry.`);
     }
   } catch (e) {
-    console.warn('[Invidious] Failed to fetch instance list:', e.message);
+    console.warn('[Invidious] Failed to fetch registry:', e.message);
   }
 
-  // Hardcoded fallback list of well-known instances
-  return [
-    'https://inv.nadeko.net',
-    'https://invidious.nerdvpn.de',
-    'https://iv.ggtyler.dev',
-    'https://invidious.protokolas.com',
-    'https://yt.cdaut.de',
-    'https://invidious.privacyredirect.com',
-    'https://invidious.drgns.space',
-  ];
+  // Merge and deduplicate: registry instances first, then hardcoded fallbacks
+  const allInstances = [...registryInstances];
+  for (const inst of hardcodedInstances) {
+    if (!allInstances.includes(inst)) {
+      allInstances.push(inst);
+    }
+  }
+
+  console.log(`[Invidious] Total instances to try: ${allInstances.length}`);
+  cachedInvidiousInstances = allInstances;
+  instancesCacheTime = now;
+  return allInstances;
 }
 
 /**
