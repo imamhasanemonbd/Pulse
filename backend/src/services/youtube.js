@@ -1,6 +1,11 @@
 import { Platform, Innertube } from 'youtubei.js';
-import poGen from 'youtube-po-token-generator';
-const { generate: generatePoToken } = poGen;
+import { exec } from 'child_process';
+import util from 'util';
+import { createRequire } from 'module';
+
+const execPromise = util.promisify(exec);
+const require = createRequire(import.meta.url);
+const cliPath = require.resolve('youtube-po-token-generator/bin/cli.mjs');
 
 // Configure the javascript execution shim required by youtubei.js to decipher stream signatures
 Platform.shim.eval = async (data) => {
@@ -19,14 +24,22 @@ export async function refreshPoToken() {
 
   activeRefreshPromise = (async () => {
     try {
-      console.log('[YouTube Service] Auto-generating fresh PO Token & Visitor Data in background...');
-      const result = await generatePoToken();
+      console.log('[YouTube Service] Auto-generating fresh PO Token & Visitor Data via sub-process...');
+      
+      // Execute the token generator in a separate process to prevent memory leaks/OOM crashes in the main server
+      const { stdout } = await execPromise(`node "${cliPath}"`);
+      const result = JSON.parse(stdout.trim());
+      
+      if (result.error) {
+        throw new Error(result.error + (result.details ? `: ${result.details}` : ''));
+      }
+      
       cachedPoToken = result.poToken;
       cachedVisitorData = result.visitorData;
-      console.log('[YouTube Service] Successfully generated and cached PO Token.');
+      console.log('[YouTube Service] Successfully generated and cached PO Token via sub-process.');
       return { poToken: cachedPoToken, visitorData: cachedVisitorData };
     } catch (error) {
-      console.error('[YouTube Service] Auto-generation of PO Token failed:', error.message || error);
+      console.error('[YouTube Service] Sub-process PO Token generation failed:', error.message || error);
       return {
         poToken: cachedPoToken || process.env.YT_PO_TOKEN,
         visitorData: cachedVisitorData || process.env.YT_VISITOR_DATA
