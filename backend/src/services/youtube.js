@@ -64,11 +64,13 @@ setInterval(() => {
 // Helper function to create an Innertube client with optional PO Token and Visitor Data
 async function createInnertubeClient() {
   const options = {};
+  const TARGET_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)';
   
   // Use dynamically generated and cached token if available
   if (cachedPoToken && cachedVisitorData) {
     options.po_token = cachedPoToken;
     options.visitor_data = cachedVisitorData;
+    options.user_agent = TARGET_USER_AGENT;
   } else {
     // If not generated yet (e.g. at initial startup request), trigger background generation without blocking
     refreshPoToken().catch(() => {});
@@ -77,13 +79,14 @@ async function createInnertubeClient() {
   // Fallback to static env variables if still empty
   if (!options.po_token && process.env.YT_PO_TOKEN) {
     options.po_token = process.env.YT_PO_TOKEN;
+    options.user_agent = TARGET_USER_AGENT;
   }
   if (!options.visitor_data && process.env.YT_VISITOR_DATA) {
     options.visitor_data = process.env.YT_VISITOR_DATA;
   }
   
   if (options.po_token) {
-    console.log('[YouTube Service] Initializing Innertube client with PO Token.');
+    console.log('[YouTube Service] Initializing Innertube client with PO Token and aligned User-Agent.');
   } else {
     console.log('[YouTube Service] Initializing Innertube client WITHOUT PO Token.');
   }
