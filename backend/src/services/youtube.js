@@ -291,8 +291,8 @@ export async function getStreamDetails(videoId) {
     await activeRefreshPromise;
   }
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
-  // We bypass the proxy for streaming to download directly from the VPS and avoid Cloudflare limits.
-  const client = await createInnertubeClient({ useProxy: false });
+  // We use the proxy for streaming to bypass YouTube CDN IP blocks (direct downloads from VPS fail with 403).
+  const client = await createInnertubeClient({ useProxy: true });
   
   let info = null;
   let errors = [];
