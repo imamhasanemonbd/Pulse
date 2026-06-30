@@ -5,6 +5,23 @@ Platform.shim.eval = async (data) => {
   return new Function(data.output)();
 };
 
+// Helper function to create an Innertube client with optional PO Token and Visitor Data from environment
+async function createInnertubeClient() {
+  const options = {};
+  if (process.env.YT_PO_TOKEN) {
+    options.po_token = process.env.YT_PO_TOKEN;
+  }
+  if (process.env.YT_VISITOR_DATA) {
+    options.visitor_data = process.env.YT_VISITOR_DATA;
+  }
+  
+  if (Object.keys(options).length > 0) {
+    console.log('[YouTube Service] Initializing Innertube with PO Token and Visitor Data configuration.');
+  }
+  
+  return await Innertube.create(options);
+}
+
 let ytMusic = null;
 let ytVR = null;
 
@@ -13,7 +30,7 @@ let ytVR = null;
  */
 export async function getYTClient() {
   if (!ytMusic) {
-    ytMusic = await Innertube.create();
+    ytMusic = await createInnertubeClient();
   }
   return ytMusic;
 }
@@ -23,7 +40,7 @@ export async function getYTClient() {
  */
 export async function getYTTVClient() {
   if (!ytVR) {
-    ytVR = await Innertube.create();
+    ytVR = await createInnertubeClient();
   }
   return ytVR;
 }
@@ -137,7 +154,7 @@ export async function searchMusic(query) {
  */
 export async function getStreamDetails(videoId) {
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
-  const client = await Innertube.create();
+  const client = await createInnertubeClient();
   
   let info = null;
   let errors = [];
