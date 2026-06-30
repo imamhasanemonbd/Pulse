@@ -64,6 +64,18 @@ setInterval(() => {
 // Helper function to create an Innertube client with optional PO Token and Visitor Data
 async function createInnertubeClient() {
   const options = {};
+
+  // If a Cloudflare Worker proxy is configured, route ALL YouTube requests through it.
+  // This bypasses YouTube's datacenter IP blocking by going through Cloudflare's edge network.
+  if (process.env.YT_PROXY_WORKER) {
+    const proxyBase = process.env.YT_PROXY_WORKER.replace(/\/$/, ''); // Remove trailing slash
+    options.fetch = async (input, init) => {
+      const targetUrl = typeof input === 'string' ? input : input.url;
+      const proxiedUrl = `${proxyBase}/${targetUrl}`;
+      return globalThis.fetch(proxiedUrl, init);
+    };
+    console.log(`[YouTube Service] Using Cloudflare Worker proxy: ${proxyBase}`);
+  }
   
   // 1. If session cookies are provided in the environment, prioritize them for session auth.
   if (process.env.YT_COOKIES) {
