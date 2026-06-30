@@ -57,6 +57,87 @@
   // Option dropdown state
   let activeTrackMenuId = null;
 
+  // Authentication state
+  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const API_BASE = import.meta.env.VITE_API_BASE !== undefined 
+    ? import.meta.env.VITE_API_BASE 
+    : (window.location.hostname === 'localhost' ? 'http://localhost:3000' : '');
+  let authUser = null; // { id, email, name, picture }
+  let authToken = localStorage.getItem('pulseToken') || null;
+
+  // Authenticated API helper
+  async function apiFetch(path, options = {}) {
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    return res;
+  }
+
+  // Google Sign-In handler
+  function handleGoogleSignIn(response) {
+    const credential = response.credential;
+    fetch(`${API_BASE}/api/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    })
+      .then(res => res.json())
+      .then(async (data) => {
+        if (data.token && data.user) {
+          authToken = data.token;
+          authUser = data.user;
+          localStorage.setItem('pulseToken', authToken);
+
+          // Sync local data to server on first login
+          await apiFetch('/api/user/sync', {
+            method: 'POST',
+            body: JSON.stringify({
+              likes: likedTracks,
+              history: historyTracks,
+              playlists: playlists.map(pl => ({ name: pl.name, tracks: pl.tracks })),
+            }),
+          });
+
+          // Fetch merged data from server
+          await loadUserData();
+        }
+      })
+      .catch(err => console.error('Google sign-in failed:', err));
+  }
+
+  async function loadUserData() {
+    if (!authToken) return;
+    try {
+      const res = await apiFetch('/api/user/sync');
+      if (res.ok) {
+        const data = await res.json();
+        likedTracks = (data.likes || []).map(l => ({ id: l.trackId, title: l.title, artist: l.artist, thumbnail: l.thumbnail, duration: l.duration }));
+        historyTracks = (data.history || []).map(h => ({ id: h.trackId, title: h.title, artist: h.artist, thumbnail: h.thumbnail, duration: h.duration }));
+        playlists = (data.playlists || []).map(pl => ({
+          id: pl.id,
+          name: pl.name,
+          tracks: (pl.tracks || []).map(t => ({ id: t.trackId, title: t.title, artist: t.artist, thumbnail: t.thumbnail, duration: t.duration })),
+        }));
+        // Also update localStorage as fallback cache
+        localStorage.setItem('likedTracks', JSON.stringify(likedTracks));
+        localStorage.setItem('historyTracks', JSON.stringify(historyTracks));
+        localStorage.setItem('playlists', JSON.stringify(playlists));
+      }
+    } catch (e) {
+      console.error('Failed to load user data:', e);
+    }
+  }
+
+  function signOut() {
+    authUser = null;
+    authToken = null;
+    localStorage.removeItem('pulseToken');
+    // Reset to local storage data
+    likedTracks = JSON.parse(localStorage.getItem('likedTracks') || '[]');
+    historyTracks = JSON.parse(localStorage.getItem('historyTracks') || '[]');
+    playlists = JSON.parse(localStorage.getItem('playlists') || '[]');
+  }
+
   // Playlists and Library Subviews state
   let playlists = JSON.parse(localStorage.getItem('playlists') || '[]');
   let activeLibrarySubViewId = null; // null | 'liked' | 'history' | playlistId
@@ -73,12 +154,12 @@
 
   // Exploration genres (Apple Music styled gradients)
   const exploreGenres = [
-    { name: 'Lofi Chill', query: 'lofi chill beats', gradient: 'linear-gradient(135deg, rgba(236, 72, 153, 0.35) 0%, rgba(139, 92, 246, 0.1) 100%)', icon: '☕' },
-    { name: 'Synthwave', query: 'synthwave retro track', gradient: 'linear-gradient(135deg, rgba(244, 63, 94, 0.35) 0%, rgba(190, 24, 74, 0.1) 100%)', icon: '🌌' },
-    { name: 'Piano & Focus', query: 'study piano focus instrumental', gradient: 'linear-gradient(135deg, rgba(14, 165, 233, 0.35) 0%, rgba(3, 105, 161, 0.1) 100%)', icon: '🎹' },
-    { name: 'Cyberpunk', query: 'cyberpunk dark industrial synth', gradient: 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(109, 40, 217, 0.1) 100%)', icon: '👾' },
-    { name: 'Acoustic Cover', query: 'acoustic guitar pop songs cover', gradient: 'linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(180, 83, 9, 0.1) 100%)', icon: '🎸' },
-    { name: 'Summer Vibes', query: 'indie pop chill beach vibe', gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.35) 0%, rgba(4, 120, 87, 0.1) 100%)', icon: '☀️' }
+    { name: 'Lofi Chill', query: 'lofi chill beats', gradient: 'linear-gradient(135deg, rgba(236, 72, 153, 0.35) 0%, rgba(139, 92, 246, 0.1) 100%)', iconId: 'lofi' },
+    { name: 'Synthwave', query: 'synthwave retro track', gradient: 'linear-gradient(135deg, rgba(244, 63, 94, 0.35) 0%, rgba(190, 24, 74, 0.1) 100%)', iconId: 'synthwave' },
+    { name: 'Piano & Focus', query: 'study piano focus instrumental', gradient: 'linear-gradient(135deg, rgba(14, 165, 233, 0.35) 0%, rgba(3, 105, 161, 0.1) 100%)', iconId: 'piano' },
+    { name: 'Cyberpunk', query: 'cyberpunk dark industrial synth', gradient: 'linear-gradient(135deg, rgba(168, 85, 247, 0.35) 0%, rgba(109, 40, 217, 0.1) 100%)', iconId: 'cyberpunk' },
+    { name: 'Acoustic Cover', query: 'acoustic guitar pop songs cover', gradient: 'linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(180, 83, 9, 0.1) 100%)', iconId: 'acoustic' },
+    { name: 'Summer Vibes', query: 'indie pop chill beach vibe', gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.35) 0%, rgba(4, 120, 87, 0.1) 100%)', iconId: 'summer' }
   ];
 
   // Distribute active line index linearly based on song progression
@@ -173,6 +254,14 @@
         history = history.slice(0, 30);
         localStorage.setItem('historyTracks', JSON.stringify(history));
         historyTracks = history;
+
+        // Sync to server if logged in
+        if (authToken) {
+          apiFetch('/api/user/history', {
+            method: 'POST',
+            body: JSON.stringify({ trackId: track.id, title: track.title, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }),
+          }).catch(() => {});
+        }
       }
     };
 
@@ -202,6 +291,30 @@
       }
     } catch (e) {
       console.error('Failed to load quick picks:', e);
+    }
+
+    // Restore user session if token exists
+    if (authToken) {
+      try {
+        const meRes = await apiFetch('/api/user/me');
+        if (meRes.ok) {
+          authUser = await meRes.json();
+          await loadUserData();
+        } else {
+          // Token expired
+          signOut();
+        }
+      } catch (e) {
+        console.error('Session restore failed:', e);
+      }
+    }
+
+    // Initialize Google Sign-In button (rendered later in Settings)
+    if (typeof google !== 'undefined' && google.accounts) {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleSignIn,
+      });
     }
   });
 
@@ -351,18 +464,48 @@
     
     let liked = JSON.parse(localStorage.getItem('likedTracks') || '[]');
     const index = liked.findIndex(t => t.id === track.id);
-    if (index !== -1) {
+    const isRemoving = index !== -1;
+    if (isRemoving) {
       liked.splice(index, 1);
     } else {
       liked.unshift(track);
     }
     localStorage.setItem('likedTracks', JSON.stringify(liked));
     likedTracks = liked;
+
+    // Sync to server if logged in
+    if (authToken) {
+      if (isRemoving) {
+        apiFetch(`/api/user/likes/${track.id}`, { method: 'DELETE' }).catch(() => {});
+      } else {
+        apiFetch('/api/user/likes', {
+          method: 'POST',
+          body: JSON.stringify({ trackId: track.id, title: track.title, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }),
+        }).catch(() => {});
+      }
+    }
   }
 
-  function createPlaylist() {
+  async function createPlaylist() {
     const name = prompt("Enter playlist name:");
     if (!name || name.trim() === "") return;
+
+    if (authToken) {
+      try {
+        const res = await apiFetch('/api/user/playlists', {
+          method: 'POST',
+          body: JSON.stringify({ name: name.trim() }),
+        });
+        if (res.ok) {
+          const pl = await res.json();
+          playlists = [...playlists, { id: pl.id, name: pl.name, tracks: [] }];
+          localStorage.setItem('playlists', JSON.stringify(playlists));
+          return;
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    // Fallback to local
     const newPlaylist = {
       id: 'pl_' + Date.now(),
       name: name.trim(),
@@ -380,6 +523,9 @@
     if (activeLibrarySubViewId === playlistId) {
       activeLibrarySubViewId = null;
     }
+    if (authToken) {
+      apiFetch(`/api/user/playlists/${playlistId}`, { method: 'DELETE' }).catch(() => {});
+    }
   }
 
   function addTrackToPlaylist(track, playlistId) {
@@ -394,6 +540,12 @@
       return pl;
     });
     localStorage.setItem('playlists', JSON.stringify(playlists));
+    if (authToken) {
+      apiFetch(`/api/user/playlists/${playlistId}/tracks`, {
+        method: 'POST',
+        body: JSON.stringify({ trackId: track.id, title: track.title, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }),
+      }).catch(() => {});
+    }
   }
 
   function removeTrackFromPlaylist(trackId, playlistId, e) {
@@ -405,6 +557,9 @@
       return pl;
     });
     localStorage.setItem('playlists', JSON.stringify(playlists));
+    if (authToken) {
+      apiFetch(`/api/user/playlists/${playlistId}/tracks/${trackId}`, { method: 'DELETE' }).catch(() => {});
+    }
   }
 
   function selectGenre(genre) {
@@ -724,10 +879,68 @@
             {#each exploreGenres as genre}
               <div 
                 class="explore-genre-card" 
-                style="background: ${genre.gradient}"
+                style="background: {genre.gradient}"
                 on:click={() => selectGenre(genre)}
               >
-                <span class="genre-icon-large">{genre.icon}</span>
+                <span class="genre-icon-large">
+                  {#if genre.iconId === 'lofi'}
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 8h1a4 4 0 0 1 0 8h-1"></path>
+                      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path>
+                      <line x1="6" y1="1" x2="6" y2="4"></line>
+                      <line x1="10" y1="1" x2="10" y2="4"></line>
+                      <line x1="14" y1="1" x2="14" y2="4"></line>
+                    </svg>
+                  {:else}
+                    {#if genre.iconId === 'synthwave'}
+                      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
+                        <circle cx="8" cy="10" r="2"></circle>
+                        <circle cx="16" cy="10" r="2"></circle>
+                        <path d="M6 16h12l-2-4H8z"></path>
+                      </svg>
+                    {:else}
+                      {#if genre.iconId === 'piano'}
+                        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="2" y="3" width="20" height="18" rx="2" ry="2"></rect>
+                          <line x1="6" y1="3" x2="6" y2="21"></line>
+                          <line x1="10" y1="3" x2="10" y2="21"></line>
+                          <line x1="14" y1="3" x2="14" y2="21"></line>
+                          <line x1="18" y1="3" x2="18" y2="21"></line>
+                        </svg>
+                      {:else}
+                        {#if genre.iconId === 'cyberpunk'}
+                          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                          </svg>
+                        {:else}
+                          {#if genre.iconId === 'acoustic'}
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M9 18V5l12-2v13"></path>
+                              <circle cx="6" cy="18" r="3"></circle>
+                              <circle cx="18" cy="16" r="3"></circle>
+                            </svg>
+                          {:else}
+                            {#if genre.iconId === 'summer'}
+                              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="5"></circle>
+                                <line x1="12" y1="1" x2="12" y2="3"></line>
+                                <line x1="12" y1="21" x2="12" y2="23"></line>
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                                <line x1="1" y1="12" x2="3" y2="12"></line>
+                                <line x1="21" y1="12" x2="23" y2="12"></line>
+                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                              </svg>
+                            {/if}
+                          {/if}
+                        {/if}
+                      {/if}
+                    {/if}
+                  {/if}
+                </span>
                 <span class="genre-label-large">{genre.name}</span>
               </div>
             {/each}
@@ -780,7 +993,13 @@
           <div class="playlists-cards-grid">
             {#if playlists.length === 0}
               <div class="empty-shelf-card no-playlists-placeholder" on:click={createPlaylist}>
-                <span class="empty-shelf-icon">🎵</span>
+                <span class="empty-shelf-icon" style="color: rgba(255, 45, 85, 0.45); margin-bottom: 12px; display: block;">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 18V5l12-2v13"></path>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <circle cx="18" cy="16" r="3"></circle>
+                  </svg>
+                </span>
                 <p>Create your first playlist</p>
                 <span class="placeholder-action-hint">Tap here or the Create button</span>
               </div>
@@ -788,7 +1007,7 @@
               {#each playlists as pl}
                 <div class="playlist-card" on:click={() => activeLibrarySubViewId = pl.id}>
                   <div class="playlist-card-badge">
-                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ff2d55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M9 18V5l12-2v13"></path>
                       <circle cx="6" cy="18" r="3"></circle>
                       <circle cx="18" cy="16" r="3"></circle>
@@ -834,7 +1053,12 @@
             <!-- List View -->
             {#if activeLibrarySubView.tracks.length === 0}
               <div class="empty-shelf-card">
-                <span class="empty-shelf-icon">📭</span>
+                <span class="empty-shelf-icon" style="color: rgba(255, 45, 85, 0.45); margin-bottom: 12px; display: block;">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="8" y1="12" x2="16" y2="12"></line>
+                  </svg>
+                </span>
                 <p>This list is empty.</p>
                 <span class="empty-shelf-subtext" style="font-size: 0.75rem; opacity: 0.5; margin-top: 4px; display: block;">Add tracks from Search or Listen Now views.</span>
               </div>
@@ -977,13 +1201,87 @@
         <h1 class="view-large-title">Settings</h1>
         <div class="settings-stack-glass">
           
+          <!-- Account Section -->
+          <div class="settings-group">
+            <h3 class="settings-group-title">Account</h3>
+
+            {#if authUser}
+              <div class="settings-row">
+                <div class="settings-row-label">
+                  <img class="settings-user-avatar" src={authUser.picture || '/icon.png'} alt="" />
+                  <div class="settings-text-meta">
+                    <span class="settings-title">{authUser.name || 'User'}</span>
+                    <span class="settings-subtitle">{authUser.email}</span>
+                  </div>
+                </div>
+                <button class="settings-sign-out-btn" on:click={signOut}>Sign Out</button>
+              </div>
+              <div class="settings-row">
+                <div class="settings-row-label">
+                  <span class="settings-row-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 10a5 5 0 0 0-9.5-2.28 6 6 0 0 0-7.8 7.5a6 6 0 0 0 11.23 2.1c2 .24 4-.67 4.97-2.32A5 5 0 0 0 18 10z"></path>
+                    </svg>
+                  </span>
+                  <div class="settings-text-meta">
+                    <span class="settings-title">Cloud Sync</span>
+                    <span class="settings-subtitle">Your data is synced to your account</span>
+                  </div>
+                </div>
+                <span class="settings-value-text" style="color: #34c759; font-weight: 700;">Active</span>
+              </div>
+            {:else}
+              <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 12px;">
+                <div class="settings-row-label">
+                  <span class="settings-row-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                  </span>
+                  <div class="settings-text-meta">
+                    <span class="settings-title">Sign in with Google</span>
+                    <span class="settings-subtitle">Sync playlists, likes, and history across devices</span>
+                  </div>
+                </div>
+                <button class="google-sign-in-btn" on:click={() => {
+                  if (typeof google !== 'undefined' && google.accounts) {
+                    google.accounts.id.prompt();
+                  } else {
+                    alert('Google Sign-In SDK is not loaded. Please check your internet connection.');
+                  }
+                }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  <span>Continue with Google</span>
+                </button>
+              </div>
+            {/if}
+          </div>
+
           <!-- App Preferences Section -->
           <div class="settings-group">
             <h3 class="settings-group-title">Audio & Streaming</h3>
             
             <div class="settings-row">
               <div class="settings-row-label">
-                <span class="settings-row-icon">🎛️</span>
+                <span class="settings-row-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="21" x2="4" y2="14"></line>
+                    <line x1="4" y1="10" x2="4" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12" y2="3"></line>
+                    <line x1="20" y1="21" x2="20" y2="16"></line>
+                    <line x1="20" y1="12" x2="20" y2="3"></line>
+                    <line x1="1" y1="14" x2="7" y2="14"></line>
+                    <line x1="9" y1="8" x2="15" y2="8"></line>
+                    <line x1="17" y1="16" x2="23" y2="16"></line>
+                  </svg>
+                </span>
                 <div class="settings-text-meta">
                   <span class="settings-title">Streaming Quality</span>
                   <span class="settings-subtitle">Adjust stream resolution bandwidth</span>
@@ -998,7 +1296,12 @@
 
             <div class="settings-row">
               <div class="settings-row-label">
-                <span class="settings-row-icon">📱</span>
+                <span class="settings-row-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                  </svg>
+                </span>
                 <div class="settings-text-meta">
                   <span class="settings-title">Background Playback</span>
                   <span class="settings-subtitle">Enable background lockscreen control</span>
@@ -1021,7 +1324,12 @@
               alert('Playback history cleared.');
             }}>
               <div class="settings-row-label">
-                <span class="settings-row-icon">🗑️</span>
+                <span class="settings-row-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </span>
                 <div class="settings-text-meta">
                   <span class="settings-title">Clear Recent History</span>
                   <span class="settings-subtitle">Remove cached history tracks from homepage</span>
@@ -1035,7 +1343,11 @@
               alert('Liked library songs cleared.');
             }}>
               <div class="settings-row-label">
-                <span class="settings-row-icon">❤️</span>
+                <span class="settings-row-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                  </svg>
+                </span>
                 <div class="settings-text-meta">
                   <span class="settings-title">Clear Liked Songs</span>
                   <span class="settings-subtitle">Reset Liked Songs library items</span>
@@ -1050,7 +1362,13 @@
             
             <div class="settings-row">
               <div class="settings-row-label">
-                <span class="settings-row-icon">ℹ️</span>
+                <span class="settings-row-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                </span>
                 <div class="settings-text-meta">
                   <span class="settings-title">Application Version</span>
                   <span class="settings-subtitle">Pulse Web Player</span>
@@ -1061,7 +1379,11 @@
 
             <div class="settings-row">
               <div class="settings-row-label">
-                <span class="settings-row-icon">🛡️</span>
+                <span class="settings-row-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                </span>
                 <div class="settings-text-meta">
                   <span class="settings-title">License & Ads</span>
                   <span class="settings-subtitle">Completely Free & Ad-free forever</span>
@@ -2913,8 +3235,8 @@
   }
 
   .settings-row-icon {
-    font-size: 1.25rem;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 45, 85, 0.08);
+    color: #ff2d55;
     border-radius: 8px;
     width: 34px;
     height: 34px;
@@ -2922,6 +3244,13 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+  }
+
+  /* Thin iOS settings divider lines */
+  .settings-group > *:not(:last-child) {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 14px;
+    margin-bottom: 6px;
   }
 
   .settings-text-meta {
@@ -2946,25 +3275,88 @@
   }
 
   .settings-select {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
     color: #ffffff;
-    font-size: 0.85rem;
-    font-weight: 500;
-    padding: 6px 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 8px 12px;
     outline: none;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
   }
   .settings-select:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.26);
+  }
+  .settings-select:focus {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: #ff2d55;
+    box-shadow: 0 0 0 3px rgba(255, 45, 85, 0.25);
+  }
+  .settings-select option {
+    background-color: #1e1e24;
+    color: #ffffff;
   }
 
   .settings-value-text {
     font-size: 0.85rem;
     color: rgba(255, 255, 255, 0.6);
     font-weight: 500;
+  }
+
+  .google-sign-in-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 22px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+    margin-left: 48px;
+  }
+  .google-sign-in-btn:hover {
+    background: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+  .google-sign-in-btn:active {
+    transform: scale(0.97);
+  }
+
+  .settings-sign-out-btn {
+    background: rgba(255, 59, 48, 0.15);
+    color: #ff3b30;
+    border: 1px solid rgba(255, 59, 48, 0.25);
+    border-radius: 16px;
+    padding: 6px 16px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+  .settings-sign-out-btn:hover {
+    background: rgba(255, 59, 48, 0.25);
+  }
+
+  .settings-user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
   }
 
   /* iOS Switch styling */

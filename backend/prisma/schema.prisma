@@ -1,0 +1,63 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String        @id @default(uuid())
+  email     String        @unique
+  name      String?
+  picture   String?
+  createdAt DateTime      @default(now())
+  playlists Playlist[]
+  likes     LikedSong[]
+  history   HistoryItem[]
+}
+
+model Playlist {
+  id        String          @id @default(uuid())
+  name      String
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+  tracks    PlaylistTrack[]
+}
+
+model PlaylistTrack {
+  id         String   @id @default(uuid())
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  trackId    String
+  title      String
+  artist     String
+  thumbnail  String?
+  duration   Int?
+  addedAt    DateTime @default(now())
+}
+
+model LikedSong {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId   String
+  title     String
+  artist    String
+  thumbnail String?
+  duration  Int?
+  likedAt   DateTime @default(now())
+}
+
+model HistoryItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId   String
+  title     String
+  artist    String
+  thumbnail String?
+  duration  Int?
+  playedAt  DateTime @default(now())
+}

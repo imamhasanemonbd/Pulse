@@ -11,6 +11,13 @@ build/
 .env.*
 !.env.example
 
+# Database
+*.db
+*.db-journal
+
+# Prisma
+backend/prisma/migrations/
+
 # Logs and system files
 *.log
 npm-debug.log*
