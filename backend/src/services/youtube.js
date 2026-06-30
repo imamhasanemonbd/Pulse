@@ -141,13 +141,25 @@ export async function getStreamDetails(videoId) {
   
   let info = null;
   let errors = [];
-  const clientProfiles = ['ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'WEB'];
+  const clientProfiles = ['ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
 
   for (const clientName of clientProfiles) {
     try {
       console.log(`[YouTube Service] Trying to resolve stream info using client: ${clientName}`);
-      info = await client.getInfo(videoId, { client: clientName });
-      if (info) break;
+      const candidateInfo = await client.getInfo(videoId, { client: clientName });
+      
+      const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
+                                  candidateInfo.streaming_data?.formats?.length > 0;
+                                  
+      if (candidateInfo && hasStreamingFormats) {
+        info = candidateInfo;
+        console.log(`[YouTube Service] Successfully resolved stream info with client: ${clientName}`);
+        break;
+      } else {
+        const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
+        console.warn(`[YouTube Service] Client ${clientName} returned no streaming formats: ${reason}`);
+        errors.push(`${clientName}: ${reason}`);
+      }
     } catch (e) {
       const errMsg = e.message || e.toString();
       console.warn(`[YouTube Service] Client ${clientName} failed: ${errMsg}`);
