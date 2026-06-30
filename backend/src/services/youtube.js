@@ -71,7 +71,7 @@ async function createInnertubeClient() {
     const proxyBase = process.env.YT_PROXY_WORKER.replace(/\/$/, ''); // Remove trailing slash
     options.fetch = async (input, init) => {
       const targetUrl = typeof input === 'string' ? input : input.url;
-      const proxiedUrl = `${proxyBase}/${targetUrl}`;
+      const proxiedUrl = `${proxyBase}/?url=${encodeURIComponent(targetUrl)}`;
       return globalThis.fetch(proxiedUrl, init);
     };
     console.log(`[YouTube Service] Using Cloudflare Worker proxy: ${proxyBase}`);

@@ -1,22 +1,16 @@
 /**
  * Pulse YT Proxy - Cloudflare Worker
  * 
- * This worker acts as a transparent proxy for YouTube API requests.
- * Deploy this to your Cloudflare account, then set the YT_PROXY_WORKER
- * environment variable in Coolify to the Worker URL.
- * 
- * Usage: https://your-worker.workers.dev/https://www.youtube.com/...
- * The target URL is embedded in the path after the worker domain.
+ * Transparent proxy for YouTube API requests.
+ * Usage: https://your-worker.workers.dev/?url=<encoded-target-url>
  */
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+    const targetUrl = url.searchParams.get('url');
 
-    // Extract the target URL from the path (everything after the leading /)
-    const targetUrl = url.pathname.substring(1) + url.search;
-
-    // Health check / root path
-    if (!targetUrl || !targetUrl.startsWith('http')) {
+    // Health check
+    if (!targetUrl) {
       return new Response('Pulse YT Proxy is running.', {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
@@ -45,7 +39,6 @@ export default {
         redirect: 'follow',
       });
 
-      // Stream the response back transparently
       const responseHeaders = new Headers(response.headers);
       responseHeaders.set('Access-Control-Allow-Origin', '*');
 
