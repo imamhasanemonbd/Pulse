@@ -113,9 +113,10 @@ async function createInnertubeClient({ useProxy = false } = {}) {
   }
   
   // 1. If session cookies are provided in the environment, prioritize them for session auth.
-  if (process.env.YT_COOKIES) {
+  // We only use cookies when proxy is enabled, as YouTube flags cookies on direct datacenter IPs.
+  if (useProxy && process.env.YT_COOKIES) {
     options.cookie = process.env.YT_COOKIES;
-    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies.');
+    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies (via proxy).');
     return await Innertube.create(options);
   }
 
