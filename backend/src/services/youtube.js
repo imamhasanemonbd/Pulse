@@ -307,50 +307,109 @@ export async function getStreamDetails(videoId) {
   return { client, info };
 }
 
-/**
- * Fallback: resolve stream URL via public Piped API instances.
- * Piped is an open-source YouTube proxy that handles all URL extraction and deciphering.
- */
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://pipedapi.adminforge.de',
-  'https://api.piped.projectsegfau.lt',
-];
+// ============================================================================
+// INVIDIOUS API FALLBACK
+// Invidious is an open-source YouTube frontend that handles extraction,
+// signature deciphering, and proxied streaming on its own servers.
+// ============================================================================
 
+let cachedInvidiousInstances = null;
+let instancesCacheTime = 0;
+
+/**
+ * Dynamically fetch working Invidious instances from the official registry.
+ * Falls back to a hardcoded list if the registry is unreachable.
+ */
+async function getInvidiousInstances() {
+  const now = Date.now();
+  // Cache for 1 hour
+  if (cachedInvidiousInstances && (now - instancesCacheTime) < 3600000) {
+    return cachedInvidiousInstances;
+  }
+
+  try {
+    console.log('[Invidious] Fetching instance list from registry...');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch('https://api.invidious.io/instances.json?sort_by=api,health', {
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) throw new Error(`Registry returned ${response.status}`);
+
+    const instances = await response.json();
+    const httpsInstances = instances
+      .filter(([domain, info]) => info.type === 'https' && info.api === true)
+      .map(([domain, info]) => info.uri || `https://${domain}`)
+      .slice(0, 15);
+
+    if (httpsInstances.length > 0) {
+      console.log(`[Invidious] Discovered ${httpsInstances.length} working API instances.`);
+      cachedInvidiousInstances = httpsInstances;
+      instancesCacheTime = now;
+      return httpsInstances;
+    }
+  } catch (e) {
+    console.warn('[Invidious] Failed to fetch instance list:', e.message);
+  }
+
+  // Hardcoded fallback list of well-known instances
+  return [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://iv.ggtyler.dev',
+    'https://invidious.protokolas.com',
+    'https://yt.cdaut.de',
+    'https://invidious.privacyredirect.com',
+    'https://invidious.drgns.space',
+  ];
+}
+
+/**
+ * Fallback: resolve a proxied audio stream URL via public Invidious instances.
+ * Uses ?local=true so the audio is proxied through the Invidious server,
+ * avoiding YouTube CDN IP-locking.
+ */
 export async function getStreamUrlFromPiped(videoId) {
-  for (const instance of PIPED_INSTANCES) {
+  const instances = await getInvidiousInstances();
+
+  for (const instance of instances) {
     try {
-      console.log(`[Piped Fallback] Trying instance: ${instance}`);
+      console.log(`[Invidious Fallback] Trying: ${instance}`);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch(`${instance}/streams/${videoId}`, {
+      const response = await fetch(`${instance}/api/v1/videos/${videoId}?local=true`, {
         signal: controller.signal
       });
       clearTimeout(timeout);
 
       if (!response.ok) {
-        console.warn(`[Piped Fallback] ${instance} returned ${response.status}`);
+        console.warn(`[Invidious Fallback] ${instance} returned ${response.status}`);
         continue;
       }
 
       const data = await response.json();
-      const audioStreams = data.audioStreams || [];
+      const audioFormats = (data.adaptiveFormats || [])
+        .filter(f => f.type?.startsWith('audio/'))
+        .sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0));
 
-      // Sort by bitrate descending to get the best quality audio
-      const best = audioStreams
-        .filter(s => s.url)
-        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
-
-      if (best?.url) {
-        console.log(`[Piped Fallback] Successfully resolved audio stream from ${instance} (${best.mimeType}, ${best.bitrate}bps)`);
-        return { url: best.url, mimeType: best.mimeType || 'audio/webm' };
+      if (audioFormats[0]?.url) {
+        const fmt = audioFormats[0];
+        console.log(`[Invidious Fallback] Resolved from ${instance} (${fmt.type}, ${fmt.bitrate}bps)`);
+        return {
+          url: fmt.url,
+          mimeType: fmt.type?.split(';')[0] || 'audio/webm'
+        };
       } else {
-        console.warn(`[Piped Fallback] ${instance} returned no audio streams`);
+        console.warn(`[Invidious Fallback] ${instance} returned no audio formats`);
       }
     } catch (e) {
-      console.warn(`[Piped Fallback] ${instance} failed: ${e.message}`);
+      console.warn(`[Invidious Fallback] ${instance} failed: ${e.message}`);
     }
   }
-  throw new Error('All Piped API instances failed to resolve stream URL');
+  throw new Error('All Invidious instances failed to resolve stream URL');
 }
+
