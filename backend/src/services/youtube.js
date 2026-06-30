@@ -62,12 +62,12 @@ setInterval(() => {
 }, 2 * 60 * 60 * 1000);
 
 // Helper function to create an Innertube client with optional PO Token and Visitor Data
-async function createInnertubeClient() {
+async function createInnertubeClient({ useProxy = false } = {}) {
   const options = {};
 
-  // If a Cloudflare Worker proxy is configured, route ALL YouTube requests through it.
-  // This bypasses YouTube's datacenter IP blocking by going through Cloudflare's edge network.
-  if (process.env.YT_PROXY_WORKER) {
+  // If a Cloudflare Worker proxy is configured and requested, route requests through it.
+  // This bypasses YouTube's datacenter IP blocking for search and metadata.
+  if (useProxy && process.env.YT_PROXY_WORKER) {
     const proxyBase = process.env.YT_PROXY_WORKER.replace(/\/$/, ''); // Remove trailing slash
     options.fetch = async (input, init = {}) => {
       let urlStr = '';
@@ -107,7 +107,9 @@ async function createInnertubeClient() {
 
       return globalThis.fetch(proxiedUrl, init);
     };
-    console.log(`[YouTube Service] Using Cloudflare Worker proxy: ${proxyBase}`);
+    console.log(`[YouTube Service] Initializing Innertube client with Cloudflare Worker proxy: ${proxyBase}`);
+  } else {
+    console.log('[YouTube Service] Initializing Innertube client with direct connection (bypassing proxy).');
   }
   
   // 1. If session cookies are provided in the environment, prioritize them for session auth.
@@ -158,7 +160,7 @@ let ytVR = null;
  */
 export async function getYTClient() {
   if (!ytMusic) {
-    ytMusic = await createInnertubeClient();
+    ytMusic = await createInnertubeClient({ useProxy: true });
   }
   return ytMusic;
 }
@@ -288,7 +290,8 @@ export async function getStreamDetails(videoId) {
     await activeRefreshPromise;
   }
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
-  const client = await createInnertubeClient();
+  // We bypass the proxy for streaming to download directly from the VPS and avoid Cloudflare limits.
+  const client = await createInnertubeClient({ useProxy: false });
   
   let info = null;
   let errors = [];
