@@ -62,7 +62,7 @@ setInterval(() => {
 }, 2 * 60 * 60 * 1000);
 
 // Helper function to create an Innertube client with optional PO Token and Visitor Data
-async function createInnertubeClient({ useProxy = false } = {}) {
+async function createInnertubeClient({ useProxy = false, useCookies = false } = {}) {
   const options = {};
 
   // If a Cloudflare Worker proxy is configured and requested, route requests through it.
@@ -113,10 +113,10 @@ async function createInnertubeClient({ useProxy = false } = {}) {
   }
   
   // 1. If session cookies are provided in the environment, prioritize them for session auth.
-  // We only use cookies when proxy is enabled, as YouTube flags cookies on direct datacenter IPs.
-  if (useProxy && process.env.YT_COOKIES) {
+  // We only use cookies when explicitly requested (e.g. for search), as YouTube flags cookies on direct/VR streaming requests.
+  if (useCookies && process.env.YT_COOKIES) {
     options.cookie = process.env.YT_COOKIES;
-    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies (via proxy).');
+    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies.');
     return await Innertube.create(options);
   }
 
@@ -161,7 +161,7 @@ let ytVR = null;
  */
 export async function getYTClient() {
   if (!ytMusic) {
-    ytMusic = await createInnertubeClient({ useProxy: true });
+    ytMusic = await createInnertubeClient({ useProxy: true, useCookies: true });
   }
   return ytMusic;
 }
