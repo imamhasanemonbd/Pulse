@@ -1,11 +1,12 @@
 import { Platform, Innertube } from 'youtubei.js';
 import { exec } from 'child_process';
 import util from 'util';
-import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const execPromise = util.promisify(exec);
-const require = createRequire(import.meta.url);
-const cliPath = require.resolve('youtube-po-token-generator/bin/cli.mjs');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const cliPath = path.join(__dirname, 'po-token-generator.js');
 
 // Configure the javascript execution shim required by youtubei.js to decipher stream signatures
 Platform.shim.eval = async (data) => {
@@ -234,7 +235,7 @@ export async function getStreamDetails(videoId) {
   
   let info = null;
   let errors = [];
-  const clientProfiles = ['ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
+  const clientProfiles = ['TV', 'ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
 
   for (const clientName of clientProfiles) {
     try {
