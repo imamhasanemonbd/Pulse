@@ -138,8 +138,26 @@ export async function searchMusic(query) {
 export async function getStreamDetails(videoId) {
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
   const client = await Innertube.create();
-  // Fetch info using the ANDROID_VR client to avoid signature rate restrictions and PO Token blocks
-  const info = await client.getInfo(videoId, { client: 'ANDROID_VR' });
+  
+  let info = null;
+  let errors = [];
+  const clientProfiles = ['ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'WEB'];
+
+  for (const clientName of clientProfiles) {
+    try {
+      console.log(`[YouTube Service] Trying to resolve stream info using client: ${clientName}`);
+      info = await client.getInfo(videoId, { client: clientName });
+      if (info) break;
+    } catch (e) {
+      const errMsg = e.message || e.toString();
+      console.warn(`[YouTube Service] Client ${clientName} failed: ${errMsg}`);
+      errors.push(`${clientName}: ${errMsg}`);
+    }
+  }
+
+  if (!info) {
+    throw new Error(`Failed to resolve video stream details with all client profiles. Errors: ${errors.join(' | ')}`);
+  }
 
   let format = null;
   if (typeof info.chooseFormat === 'function') {
