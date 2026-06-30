@@ -293,10 +293,35 @@ export async function getStreamDetails(videoId) {
   let info = null;
   let errors = [];
 
-  // 1. If we have a cached PO Token or cookies, try the default client configuration first
-  if (cachedPoToken || process.env.YT_COOKIES) {
+  // 1. Try clients that return direct, undeciphered URLs (ANDROID_VR, TV) first to avoid deciphering errors
+  const primaryProfiles = ['ANDROID_VR', 'TV'];
+  for (const clientName of primaryProfiles) {
     try {
-      console.log('[YouTube Service] Trying to resolve stream info using default client...');
+      console.log(`[YouTube Service] Trying primary stream resolution client: ${clientName}`);
+      const candidateInfo = await client.getInfo(videoId, { client: clientName });
+      
+      const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
+                                  candidateInfo.streaming_data?.formats?.length > 0;
+                                  
+      if (candidateInfo && hasStreamingFormats) {
+        info = candidateInfo;
+        console.log(`[YouTube Service] Successfully resolved stream info using primary client: ${clientName}`);
+        break;
+      } else {
+        const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
+        console.warn(`[YouTube Service] Primary client ${clientName} returned no streaming formats: ${reason}`);
+        errors.push(`${clientName}: ${reason}`);
+      }
+    } catch (e) {
+      console.warn(`[YouTube Service] Primary client ${clientName} failed:`, e.message || e);
+      errors.push(`${clientName}: ${e.message || e}`);
+    }
+  }
+
+  // 2. If primary clients failed, fallback to the default client or other profiles
+  if (!info && (cachedPoToken || process.env.YT_COOKIES)) {
+    try {
+      console.log('[YouTube Service] Trying fallback stream info using default client...');
       const candidateInfo = await client.getInfo(videoId);
       
       const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
@@ -316,11 +341,11 @@ export async function getStreamDetails(videoId) {
     }
   }
 
-  // 2. Fall back to trying other profiles if default client failed or wasn't available
+  // 3. Last resort fallback: try all other profiles
   if (!info) {
-    const clientProfiles = ['TV', 'ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
+    const fallbackProfiles = ['IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
 
-    for (const clientName of clientProfiles) {
+    for (const clientName of fallbackProfiles) {
       try {
         console.log(`[YouTube Service] Trying to resolve stream info using client: ${clientName}`);
         const candidateInfo = await client.getInfo(videoId, { client: clientName });
