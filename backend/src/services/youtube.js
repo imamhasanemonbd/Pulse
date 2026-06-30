@@ -233,7 +233,8 @@ export async function searchMusic(query) {
 }
 
 /**
- * Resolves the stream URL and content details for a video ID using ANDROID_VR client
+ * Resolves the video info and client for a video ID.
+ * Returns the client and info objects so the caller can use info.download() for streaming.
  */
 export async function getStreamDetails(videoId) {
   // If the PO token is actively generating, await it to ensure we have it before creating the streaming client
@@ -247,11 +248,10 @@ export async function getStreamDetails(videoId) {
   let info = null;
   let errors = [];
 
-  // 1. If we have a cached PO Token, try the default client configuration first
-  // (which uses the Web client session that matches our generated WEB PO Token)
-  if (cachedPoToken) {
+  // 1. If we have a cached PO Token or cookies, try the default client configuration first
+  if (cachedPoToken || process.env.YT_COOKIES) {
     try {
-      console.log('[YouTube Service] Trying to resolve stream info using default client with PO Token...');
+      console.log('[YouTube Service] Trying to resolve stream info using default client...');
       const candidateInfo = await client.getInfo(videoId);
       
       const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
@@ -259,19 +259,19 @@ export async function getStreamDetails(videoId) {
                                   
       if (candidateInfo && hasStreamingFormats) {
         info = candidateInfo;
-        console.log('[YouTube Service] Successfully resolved stream info using default client with PO Token.');
+        console.log('[YouTube Service] Successfully resolved stream info using default client.');
       } else {
         const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
         console.warn(`[YouTube Service] Default client returned no streaming formats: ${reason}`);
         errors.push(`DefaultClient: ${reason}`);
       }
     } catch (e) {
-      console.warn('[YouTube Service] Default client with PO Token failed:', e.message || e);
+      console.warn('[YouTube Service] Default client failed:', e.message || e);
       errors.push(`DefaultClient: ${e.message || e}`);
     }
   }
 
-  // 2. Fall back to trying other profiles if default client with PO Token failed or wasn't available
+  // 2. Fall back to trying other profiles if default client failed or wasn't available
   if (!info) {
     const clientProfiles = ['TV', 'ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
 
@@ -304,44 +304,6 @@ export async function getStreamDetails(videoId) {
     throw new Error(`Failed to resolve video stream details with all client profiles. Errors: ${errors.join(' | ')}`);
   }
 
-  let format = null;
-  if (typeof info.chooseFormat === 'function') {
-    try {
-      format = info.chooseFormat({ type: 'audio', quality: 'best' });
-    } catch (e) {
-      console.warn('chooseFormat failed, falling back to manual selection:', e);
-    }
-  }
-
-  if (!format) {
-    const formats = info.streaming_data?.adaptive_formats || [];
-    // Select the best audio stream
-    format = formats.find(f => f.mime_type?.startsWith('audio/')) || 
-             formats.find(f => f.mime_type?.includes('audio')) ||
-             formats[0];
-  }
-
-  if (!format) {
-    throw new Error('No formats found for stream resolution');
-  }
-
-  let url = format.url;
-  if (!url && typeof format.decipher === 'function') {
-    try {
-      url = await format.decipher(client.session.player);
-    } catch (e) {
-      console.warn('[YouTube Service] Decipher failed, falling back to format.url:', e.message || e);
-      url = format.url;
-    }
-  }
-
-  if (!url) {
-    throw new Error('Could not resolve direct streaming URL');
-  }
-
-  return {
-    url,
-    mimeType: format.mime_type || 'audio/webm',
-    contentLength: format.content_length || null
-  };
+  return { client, info };
 }
+
