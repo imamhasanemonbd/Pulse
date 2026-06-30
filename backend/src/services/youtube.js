@@ -123,21 +123,23 @@ async function createInnertubeClient({ useProxy = false, useCookies = false } = 
   const TARGET_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)';
   
   // Use dynamically generated and cached token if available
-  if (cachedPoToken && cachedVisitorData) {
+  // We only use the PO Token on direct connections (useProxy is false). Supplying it via proxy
+  // for TV/ANDROID_VR client profiles causes parameter mismatch errors on YouTube.
+  if (!useProxy && cachedPoToken && cachedVisitorData) {
     options.po_token = cachedPoToken;
     options.visitor_data = cachedVisitorData;
     options.user_agent = TARGET_USER_AGENT;
-  } else {
+  } else if (!useProxy) {
     // If not generated yet (e.g. at initial startup request), trigger background generation without blocking
     refreshPoToken().catch(() => {});
   }
 
   // Fallback to static env variables if still empty
-  if (!options.po_token && process.env.YT_PO_TOKEN) {
+  if (!useProxy && !options.po_token && process.env.YT_PO_TOKEN) {
     options.po_token = process.env.YT_PO_TOKEN;
     options.user_agent = TARGET_USER_AGENT;
   }
-  if (!options.visitor_data && process.env.YT_VISITOR_DATA) {
+  if (!useProxy && !options.visitor_data && process.env.YT_VISITOR_DATA) {
     options.visitor_data = process.env.YT_VISITOR_DATA;
   }
   
