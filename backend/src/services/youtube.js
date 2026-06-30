@@ -235,29 +235,57 @@ export async function getStreamDetails(videoId) {
   
   let info = null;
   let errors = [];
-  const clientProfiles = ['TV', 'ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
 
-  for (const clientName of clientProfiles) {
+  // 1. If we have a cached PO Token, try the default client configuration first
+  // (which uses the Web client session that matches our generated WEB PO Token)
+  if (cachedPoToken) {
     try {
-      console.log(`[YouTube Service] Trying to resolve stream info using client: ${clientName}`);
-      const candidateInfo = await client.getInfo(videoId, { client: clientName });
+      console.log('[YouTube Service] Trying to resolve stream info using default client with PO Token...');
+      const candidateInfo = await client.getInfo(videoId);
       
       const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
                                   candidateInfo.streaming_data?.formats?.length > 0;
                                   
       if (candidateInfo && hasStreamingFormats) {
         info = candidateInfo;
-        console.log(`[YouTube Service] Successfully resolved stream info with client: ${clientName}`);
-        break;
+        console.log('[YouTube Service] Successfully resolved stream info using default client with PO Token.');
       } else {
         const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
-        console.warn(`[YouTube Service] Client ${clientName} returned no streaming formats: ${reason}`);
-        errors.push(`${clientName}: ${reason}`);
+        console.warn(`[YouTube Service] Default client returned no streaming formats: ${reason}`);
+        errors.push(`DefaultClient: ${reason}`);
       }
     } catch (e) {
-      const errMsg = e.message || e.toString();
-      console.warn(`[YouTube Service] Client ${clientName} failed: ${errMsg}`);
-      errors.push(`${clientName}: ${errMsg}`);
+      console.warn('[YouTube Service] Default client with PO Token failed:', e.message || e);
+      errors.push(`DefaultClient: ${e.message || e}`);
+    }
+  }
+
+  // 2. Fall back to trying other profiles if default client with PO Token failed or wasn't available
+  if (!info) {
+    const clientProfiles = ['TV', 'ANDROID_VR', 'IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
+
+    for (const clientName of clientProfiles) {
+      try {
+        console.log(`[YouTube Service] Trying to resolve stream info using client: ${clientName}`);
+        const candidateInfo = await client.getInfo(videoId, { client: clientName });
+        
+        const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
+                                    candidateInfo.streaming_data?.formats?.length > 0;
+                                    
+        if (candidateInfo && hasStreamingFormats) {
+          info = candidateInfo;
+          console.log(`[YouTube Service] Successfully resolved stream info with client: ${clientName}`);
+          break;
+        } else {
+          const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
+          console.warn(`[YouTube Service] Client ${clientName} returned no streaming formats: ${reason}`);
+          errors.push(`${clientName}: ${reason}`);
+        }
+      } catch (e) {
+        const errMsg = e.message || e.toString();
+        console.warn(`[YouTube Service] Client ${clientName} failed: ${errMsg}`);
+        errors.push(`${clientName}: ${errMsg}`);
+      }
     }
   }
 
