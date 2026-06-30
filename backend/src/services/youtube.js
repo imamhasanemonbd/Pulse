@@ -1,22 +1,74 @@
 import { Platform, Innertube } from 'youtubei.js';
+import poGen from 'youtube-po-token-generator';
+const { generate: generatePoToken } = poGen;
 
 // Configure the javascript execution shim required by youtubei.js to decipher stream signatures
 Platform.shim.eval = async (data) => {
   return new Function(data.output)();
 };
 
-// Helper function to create an Innertube client with optional PO Token and Visitor Data from environment
+let cachedPoToken = null;
+let cachedVisitorData = null;
+
+// Programmatically generate and cache a valid PO Token using the server's own IP address
+export async function refreshPoToken() {
+  try {
+    console.log('[YouTube Service] Auto-generating fresh PO Token & Visitor Data in background...');
+    const result = await generatePoToken();
+    cachedPoToken = result.poToken;
+    cachedVisitorData = result.visitorData;
+    console.log('[YouTube Service] Successfully generated and cached PO Token.');
+    return { poToken: cachedPoToken, visitorData: cachedVisitorData };
+  } catch (error) {
+    console.error('[YouTube Service] Auto-generation of PO Token failed:', error.message || error);
+    return {
+      poToken: cachedPoToken || process.env.YT_PO_TOKEN,
+      visitorData: cachedVisitorData || process.env.YT_VISITOR_DATA
+    };
+  }
+}
+
+// Trigger initial generation in the background immediately on module load
+refreshPoToken().catch(() => {});
+
+// Keep refreshing the PO Token every 2 hours
+setInterval(() => {
+  refreshPoToken().catch(() => {});
+}, 2 * 60 * 60 * 1000);
+
+// Helper function to create an Innertube client with optional PO Token and Visitor Data
 async function createInnertubeClient() {
   const options = {};
-  if (process.env.YT_PO_TOKEN) {
+  
+  // Use dynamically generated and cached token if available
+  if (cachedPoToken && cachedVisitorData) {
+    options.po_token = cachedPoToken;
+    options.visitor_data = cachedVisitorData;
+  } else {
+    // If not generated yet (e.g. at initial startup request), try generating it synchronously
+    try {
+      const tokens = await refreshPoToken();
+      if (tokens.poToken) {
+        options.po_token = tokens.poToken;
+        options.visitor_data = tokens.visitorData;
+      }
+    } catch (e) {
+      console.warn('[YouTube Service] Sync PO token generation failed. Checking static env variables...');
+    }
+  }
+
+  // Fallback to static env variables if still empty
+  if (!options.po_token && process.env.YT_PO_TOKEN) {
     options.po_token = process.env.YT_PO_TOKEN;
   }
-  if (process.env.YT_VISITOR_DATA) {
+  if (!options.visitor_data && process.env.YT_VISITOR_DATA) {
     options.visitor_data = process.env.YT_VISITOR_DATA;
   }
   
-  if (Object.keys(options).length > 0) {
-    console.log('[YouTube Service] Initializing Innertube with PO Token and Visitor Data configuration.');
+  if (options.po_token) {
+    console.log('[YouTube Service] Initializing Innertube client with PO Token.');
+  } else {
+    console.log('[YouTube Service] Initializing Innertube client WITHOUT PO Token.');
   }
   
   return await Innertube.create(options);
