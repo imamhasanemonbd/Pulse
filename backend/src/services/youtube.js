@@ -66,17 +66,9 @@ async function createInnertubeClient() {
   const options = {};
   
   // 1. If session cookies are provided in the environment, prioritize them for session auth.
-  // We use a custom fetch wrapper to inject cookies into EVERY request (including player.js download)
-  // which is critical for the signature decipher functions to load correctly.
   if (process.env.YT_COOKIES) {
-    const cookieString = process.env.YT_COOKIES;
-    options.cookie = cookieString;
-    options.fetch = async (input, init = {}) => {
-      const headers = new Headers(init.headers);
-      headers.set('cookie', cookieString);
-      return globalThis.fetch(input, { ...init, headers });
-    };
-    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies (custom fetch).');
+    options.cookie = process.env.YT_COOKIES;
+    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies.');
     return await Innertube.create(options);
   }
 
@@ -315,3 +307,50 @@ export async function getStreamDetails(videoId) {
   return { client, info };
 }
 
+/**
+ * Fallback: resolve stream URL via public Piped API instances.
+ * Piped is an open-source YouTube proxy that handles all URL extraction and deciphering.
+ */
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.adminforge.de',
+  'https://api.piped.projectsegfau.lt',
+];
+
+export async function getStreamUrlFromPiped(videoId) {
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      console.log(`[Piped Fallback] Trying instance: ${instance}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(`${instance}/streams/${videoId}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.warn(`[Piped Fallback] ${instance} returned ${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const audioStreams = data.audioStreams || [];
+
+      // Sort by bitrate descending to get the best quality audio
+      const best = audioStreams
+        .filter(s => s.url)
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+
+      if (best?.url) {
+        console.log(`[Piped Fallback] Successfully resolved audio stream from ${instance} (${best.mimeType}, ${best.bitrate}bps)`);
+        return { url: best.url, mimeType: best.mimeType || 'audio/webm' };
+      } else {
+        console.warn(`[Piped Fallback] ${instance} returned no audio streams`);
+      }
+    } catch (e) {
+      console.warn(`[Piped Fallback] ${instance} failed: ${e.message}`);
+    }
+  }
+  throw new Error('All Piped API instances failed to resolve stream URL');
+}

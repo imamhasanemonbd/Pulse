@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
 import { Readable } from 'stream';
-import { searchMusic, getStreamDetails, getYTClient } from './services/youtube.js';
+import { searchMusic, getStreamDetails, getStreamUrlFromPiped, getYTClient } from './services/youtube.js';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { OAuth2Client } from 'google-auth-library';
@@ -105,13 +105,11 @@ fastify.get('/api/stream/:id', async (request, reply) => {
     return reply.status(400).send({ error: 'Track ID is required' });
   }
 
+  // Method 1: Try youtubei.js built-in download
   try {
     const { client, info } = await getStreamDetails(id);
+    fastify.log.info(`[Streaming Proxy] Video: ${id}, trying info.download()...`);
 
-    fastify.log.info(`[Streaming Proxy] Video: ${id}, using info.download() for streaming`);
-
-    // Use youtubei.js's built-in download method which handles URL resolution,
-    // signature deciphering, and streaming all internally.
     const downloadStream = await info.download({ type: 'audio', quality: 'best' });
 
     reply.status(200);
@@ -119,11 +117,37 @@ fastify.get('/api/stream/:id', async (request, reply) => {
     reply.header('accept-ranges', 'bytes');
     reply.header('cache-control', 'public, max-age=31536000');
 
-    // Convert the ReadableStream (web) to a Node.js Readable stream and pipe it
     const nodeStream = Readable.fromWeb(downloadStream);
     return reply.send(nodeStream);
-  } catch (error) {
-    fastify.log.error(error);
+  } catch (primaryError) {
+    fastify.log.warn(`[Streaming Proxy] Primary download failed for ${id}: ${primaryError.message}`);
+  }
+
+  // Method 2: Fallback to Piped API (open-source YouTube proxy)
+  try {
+    fastify.log.info(`[Streaming Proxy] Video: ${id}, trying Piped API fallback...`);
+    const streamInfo = await getStreamUrlFromPiped(id);
+
+    const response = await fetch(streamInfo.url);
+    if (!response.ok && response.status !== 206) {
+      throw new Error(`Piped CDN returned ${response.status} ${response.statusText}`);
+    }
+
+    reply.status(response.status);
+    reply.header('content-type', response.headers.get('content-type') || streamInfo.mimeType);
+    if (response.headers.has('content-length')) {
+      reply.header('content-length', response.headers.get('content-length'));
+    }
+    if (response.headers.has('content-range')) {
+      reply.header('content-range', response.headers.get('content-range'));
+    }
+    reply.header('accept-ranges', 'bytes');
+    reply.header('cache-control', 'public, max-age=31536000');
+
+    const nodeStream = Readable.fromWeb(response.body);
+    return reply.send(nodeStream);
+  } catch (fallbackError) {
+    fastify.log.error(`[Streaming Proxy] Piped fallback also failed for ${id}: ${fallbackError.message}`);
     return reply.status(500).send({ error: 'Failed to resolve or stream audio' });
   }
 });
