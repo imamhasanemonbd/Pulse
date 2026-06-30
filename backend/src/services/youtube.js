@@ -69,9 +69,42 @@ async function createInnertubeClient() {
   // This bypasses YouTube's datacenter IP blocking by going through Cloudflare's edge network.
   if (process.env.YT_PROXY_WORKER) {
     const proxyBase = process.env.YT_PROXY_WORKER.replace(/\/$/, ''); // Remove trailing slash
-    options.fetch = async (input, init) => {
-      const targetUrl = typeof input === 'string' ? input : input.url;
-      const proxiedUrl = `${proxyBase}/?url=${encodeURIComponent(targetUrl)}`;
+    options.fetch = async (input, init = {}) => {
+      let urlStr = '';
+      if (typeof input === 'string') {
+        urlStr = input;
+      } else if (input && typeof input.url === 'string') {
+        urlStr = input.url;
+      } else {
+        urlStr = String(input || '');
+      }
+
+      // Resolve relative and protocol-relative URLs
+      if (urlStr.startsWith('//')) {
+        urlStr = `https:${urlStr}`;
+      } else if (urlStr.startsWith('/')) {
+        urlStr = `https://www.youtube.com${urlStr}`;
+      } else if (!urlStr.startsWith('http') && urlStr.length > 0) {
+        urlStr = `https://www.youtube.com/${urlStr}`;
+      }
+
+      const proxiedUrl = `${proxyBase}/?url=${encodeURIComponent(urlStr)}`;
+
+      // Merge properties if input is a Request object
+      if (typeof input === 'object' && input !== null) {
+        const newInit = { ...init };
+        if (!newInit.headers && input.headers) {
+          newInit.headers = input.headers;
+        }
+        if (!newInit.method && input.method) {
+          newInit.method = input.method;
+        }
+        if (!newInit.body && input.body) {
+          newInit.body = input.body;
+        }
+        return globalThis.fetch(proxiedUrl, newInit);
+      }
+
       return globalThis.fetch(proxiedUrl, init);
     };
     console.log(`[YouTube Service] Using Cloudflare Worker proxy: ${proxyBase}`);
