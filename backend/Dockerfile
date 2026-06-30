@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY backend/package.json ./backend/
@@ -8,7 +8,7 @@ COPY backend/ ./backend/
 WORKDIR /app/backend
 RUN npx prisma generate
 
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/backend ./backend
