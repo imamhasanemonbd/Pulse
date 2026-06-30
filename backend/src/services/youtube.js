@@ -9,23 +9,34 @@ Platform.shim.eval = async (data) => {
 
 let cachedPoToken = null;
 let cachedVisitorData = null;
+let activeRefreshPromise = null;
 
 // Programmatically generate and cache a valid PO Token using the server's own IP address
 export async function refreshPoToken() {
-  try {
-    console.log('[YouTube Service] Auto-generating fresh PO Token & Visitor Data in background...');
-    const result = await generatePoToken();
-    cachedPoToken = result.poToken;
-    cachedVisitorData = result.visitorData;
-    console.log('[YouTube Service] Successfully generated and cached PO Token.');
-    return { poToken: cachedPoToken, visitorData: cachedVisitorData };
-  } catch (error) {
-    console.error('[YouTube Service] Auto-generation of PO Token failed:', error.message || error);
-    return {
-      poToken: cachedPoToken || process.env.YT_PO_TOKEN,
-      visitorData: cachedVisitorData || process.env.YT_VISITOR_DATA
-    };
+  if (activeRefreshPromise) {
+    return activeRefreshPromise;
   }
+
+  activeRefreshPromise = (async () => {
+    try {
+      console.log('[YouTube Service] Auto-generating fresh PO Token & Visitor Data in background...');
+      const result = await generatePoToken();
+      cachedPoToken = result.poToken;
+      cachedVisitorData = result.visitorData;
+      console.log('[YouTube Service] Successfully generated and cached PO Token.');
+      return { poToken: cachedPoToken, visitorData: cachedVisitorData };
+    } catch (error) {
+      console.error('[YouTube Service] Auto-generation of PO Token failed:', error.message || error);
+      return {
+        poToken: cachedPoToken || process.env.YT_PO_TOKEN,
+        visitorData: cachedVisitorData || process.env.YT_VISITOR_DATA
+      };
+    } finally {
+      activeRefreshPromise = null;
+    }
+  })();
+
+  return activeRefreshPromise;
 }
 
 // Trigger initial generation in the background immediately on module load
@@ -45,16 +56,8 @@ async function createInnertubeClient() {
     options.po_token = cachedPoToken;
     options.visitor_data = cachedVisitorData;
   } else {
-    // If not generated yet (e.g. at initial startup request), try generating it synchronously
-    try {
-      const tokens = await refreshPoToken();
-      if (tokens.poToken) {
-        options.po_token = tokens.poToken;
-        options.visitor_data = tokens.visitorData;
-      }
-    } catch (e) {
-      console.warn('[YouTube Service] Sync PO token generation failed. Checking static env variables...');
-    }
+    // If not generated yet (e.g. at initial startup request), trigger background generation without blocking
+    refreshPoToken().catch(() => {});
   }
 
   // Fallback to static env variables if still empty
@@ -73,6 +76,9 @@ async function createInnertubeClient() {
   
   return await Innertube.create(options);
 }
+
+// Export active promise to allow getStreamDetails to wait for active generation if necessary
+export { activeRefreshPromise };
 
 let ytMusic = null;
 let ytVR = null;
@@ -205,6 +211,11 @@ export async function searchMusic(query) {
  * Resolves the stream URL and content details for a video ID using ANDROID_VR client
  */
 export async function getStreamDetails(videoId) {
+  // If the PO token is actively generating, await it to ensure we have it before creating the streaming client
+  if (!cachedPoToken && activeRefreshPromise) {
+    console.log('[YouTube Service] Awaiting active PO Token generation before resolving stream details...');
+    await activeRefreshPromise;
+  }
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
   const client = await createInnertubeClient();
   
