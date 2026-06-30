@@ -325,11 +325,14 @@ export async function getStreamDetails(videoId) {
     throw new Error('No formats found for stream resolution');
   }
 
-  let url;
-  if (typeof format.decipher === 'function') {
-    url = await format.decipher(client.session.player);
-  } else {
-    url = format.url;
+  let url = format.url;
+  if (!url && typeof format.decipher === 'function') {
+    try {
+      url = await format.decipher(client.session.player);
+    } catch (e) {
+      console.warn('[YouTube Service] Decipher failed, falling back to format.url:', e.message || e);
+      url = format.url;
+    }
   }
 
   if (!url) {
