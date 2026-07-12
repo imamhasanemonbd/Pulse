@@ -90,22 +90,41 @@ async function createInnertubeClient({ useProxy = false, useCookies = false } = 
 
       const proxiedUrl = `${proxyBase}/?url=${encodeURIComponent(urlStr)}`;
 
-      // Merge properties if input is a Request object
-      if (typeof input === 'object' && input !== null) {
-        const newInit = { ...init };
-        if (!newInit.headers && input.headers) {
-          newInit.headers = input.headers;
+      const newInit = { ...init };
+      
+      // Clean headers to prevent 403 Forbidden from target servers (like YouTube) due to Host header mismatch
+      const cleanedHeaders = new Headers();
+      if (init.headers) {
+        const headersObj = new Headers(init.headers);
+        for (const [key, value] of headersObj.entries()) {
+          cleanedHeaders.set(key, value);
         }
+      }
+      if (typeof input === 'object' && input !== null && input.headers) {
+        const headersObj = new Headers(input.headers);
+        for (const [key, value] of headersObj.entries()) {
+          cleanedHeaders.set(key, value);
+        }
+      }
+
+      // Strip headers that cause 403 Forbidden during proxy forwarding
+      cleanedHeaders.delete('host');
+      cleanedHeaders.delete('origin');
+      cleanedHeaders.delete('referer');
+      cleanedHeaders.delete('cookie');
+      
+      newInit.headers = cleanedHeaders;
+
+      if (typeof input === 'object' && input !== null) {
         if (!newInit.method && input.method) {
           newInit.method = input.method;
         }
         if (!newInit.body && input.body) {
           newInit.body = input.body;
         }
-        return globalThis.fetch(proxiedUrl, newInit);
       }
 
-      return globalThis.fetch(proxiedUrl, init);
+      return globalThis.fetch(proxiedUrl, newInit);
     };
     console.log(`[YouTube Service] Initializing Innertube client with Cloudflare Worker proxy: ${proxyBase}`);
   } else {

@@ -31,6 +31,14 @@ export async function generate() {
     });
     
     Object.defineProperty(window.navigator, 'userAgent', { value: userAgent, writable: false });
+    window.TextEncoder = globalThis.TextEncoder;
+    window.TextDecoder = globalThis.TextDecoder;
+    if (!window.crypto) {
+      Object.defineProperty(window, 'crypto', {
+        value: globalThis.crypto || (typeof require !== 'undefined' ? require('crypto').webcrypto : null),
+        writable: false
+      });
+    }
     window.visitorData = visitorData;
     window.onPoToken = (token) => {
       res({ poToken: token });
