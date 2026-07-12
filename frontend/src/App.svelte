@@ -1906,8 +1906,8 @@
   /* Headers */
   .top-header-glass {
     height: 68px;
-    background: rgba(15, 15, 20, 0.25);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: transparent;
+    border-bottom: none;
     display: flex;
     align-items: center;
     padding: 0 16px;
@@ -2112,6 +2112,13 @@
     color: #ffffff;
     font-size: 1rem;
     font-family: inherit;
+  }
+
+  .search-pill input::-webkit-search-cancel-button,
+  .search-pill-expanded input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
   }
 
   .search-clear-btn {
