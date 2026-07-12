@@ -96,6 +96,43 @@ fastify.get('/api/lyrics/:id', async (request, reply) => {
 });
 
 /**
+ * GET /api/track/:id
+ * Resolves metadata details for a single YouTube track.
+ */
+fastify.get('/api/track/:id', async (request, reply) => {
+  const { id } = request.params;
+  if (!id) {
+    return reply.status(400).send({ error: 'Track ID is required' });
+  }
+
+  try {
+    const { client, info } = await getStreamDetails(id);
+    const title = info.basic_info.title || 'Unknown Track';
+    const artist = info.basic_info.author || 'Unknown Artist';
+    const duration = info.basic_info.duration || 0;
+    
+    const thumbs = info.basic_info.thumbnail || [];
+    let thumbnail = '';
+    if (thumbs.length > 0) {
+      thumbnail = thumbs[thumbs.length - 1].url || thumbs[0].url || '';
+    }
+
+    if (thumbnail) {
+      if (thumbnail.includes('googleusercontent.com') || thumbnail.includes('ggpht.com')) {
+        thumbnail = thumbnail.replace(/=w\d+-h\d+/, '=w720-h720').replace(/-w\d+-h\d+/, '-w720-h720');
+      } else if (thumbnail.includes('i.ytimg.com/vi/')) {
+        thumbnail = thumbnail.replace(/(default|mqdefault|hqdefault|sddefault)\.jpg/, 'hq720.jpg');
+      }
+    }
+
+    return { id, title, artist, duration, thumbnail };
+  } catch (error) {
+    fastify.log.error(`[Track Info] Failed to fetch details for ${id}: ${error.message}`);
+    return reply.status(500).send({ error: 'Failed to fetch track details' });
+  }
+});
+
+/**
  * Endpoint to stream track audio
  * GET /api/stream/:id
  */

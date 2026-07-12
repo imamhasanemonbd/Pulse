@@ -317,6 +317,26 @@
         callback: handleGoogleSignIn,
       });
     }
+
+    // Parse URL track query param for shared links
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedTrackId = urlParams.get('track');
+    if (sharedTrackId) {
+      try {
+        const trackRes = await fetch(`/api/track/${sharedTrackId}`);
+        if (trackRes.ok) {
+          const sharedTrack = await trackRes.json();
+          // Load and play the shared track!
+          playSong(sharedTrack, [sharedTrack]);
+          isPlayerExpanded = true;
+          // Clean the URL query parameter without reloading the page so it doesn't replay on refresh
+          const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+        }
+      } catch (err) {
+        console.error('Failed to load shared track details:', err);
+      }
+    }
   });
 
   // Search trigger
@@ -627,7 +647,7 @@
     isPlayerExpanded = false;
     activeTab = 'search';
     query = currentTrack.artist;
-    searchMusic();
+    handleSearch();
   }
 
   function playNext(track, e) {
