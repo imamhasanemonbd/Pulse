@@ -710,6 +710,62 @@
     return url;
   }
 
+  // Helper to dynamically extract dominant color, darken it, and set PWA theme-color meta tag
+  function updateDynamicThemeColor(imageUrl) {
+    if (!imageUrl) {
+      setThemeColorMeta('#030303');
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = imageUrl;
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 1, 1);
+        const data = ctx.getImageData(0, 0, 1, 1).data;
+        const r = data[0];
+        const g = data[1];
+        const b = data[2];
+
+        // Blend with 88% black to create a very dark ambient shade
+        // This keeps status bar text/icons readable (white) on mobile OS
+        const factor = 0.12; 
+        const dr = Math.floor(r * factor);
+        const dg = Math.floor(g * factor);
+        const db = Math.floor(b * factor);
+
+        const hex = "#" + ((1 << 24) + (dr << 16) + (dg << 8) + db).toString(16).slice(1);
+        setThemeColorMeta(hex);
+      } catch (e) {
+        setThemeColorMeta('#030303');
+      }
+    };
+    img.onerror = () => {
+      setThemeColorMeta('#030303');
+    };
+  }
+
+  function setThemeColorMeta(hex) {
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', hex);
+  }
+
+  $: if (currentTrack) {
+    updateDynamicThemeColor(currentTrack.thumbnail);
+  } else {
+    updateDynamicThemeColor(null);
+  }
+
   $: isCurrentTrackLiked = currentTrack && likedTracks.some(t => t.id === currentTrack.id);
 </script>
 
