@@ -2593,10 +2593,7 @@
     top: 0;
     left: 0;
     right: 0;
-    bottom: 0;
-    background: rgba(10, 10, 15, 0.55);
-    backdrop-filter: blur(40px) saturate(210%);
-    -webkit-backdrop-filter: blur(40px) saturate(210%);
+    background: radial-gradient(circle at 50% 30%, #141130 0%, #200819 50%, #030305 100%);
     z-index: 120;
     display: flex;
     flex-direction: column;
@@ -2778,26 +2775,31 @@
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    height: 4px;
-    border-radius: 2px;
+    height: 6px;
+    border-radius: 100px;
     outline: none;
     cursor: pointer;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.25);
     transition: background 0.1s;
   }
 
   .expanded-scrubber-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background-color: #ffffff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 2px 6px rgba(0,0,0,0.4);
     transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .expanded-scrubber-slider:hover::-webkit-slider-thumb {
-    transform: scale(1.6);
+    transform: scale(1.4);
   }
 
   .time-readout-row {
@@ -2858,8 +2860,10 @@
   }
 
   .exp-nav-btn {
-    background: none;
-    border: none;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     cursor: pointer;
     color: #ffffff;
     opacity: 0.85;
@@ -2868,11 +2872,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
     transition: all 0.2s;
   }
   
   .exp-nav-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
     opacity: 1;
   }
   
@@ -2881,11 +2887,11 @@
   }
 
   .exp-main-play-btn {
-    background-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
     color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
     width: 60px;
     height: 60px;
     border-radius: 50%;
@@ -2893,14 +2899,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 8px 32px rgba(0, 0, 0, 0.35);
     transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s, border-color 0.2s;
   }
 
   .exp-main-play-btn:hover {
-    background-color: rgba(255, 255, 255, 0.18);
-    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
     transform: scale(1.04);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 12px 40px rgba(0, 0, 0, 0.55);
   }
 
   .exp-main-play-btn:active {
@@ -2945,26 +2952,31 @@
     -webkit-appearance: none;
     appearance: none;
     flex: 1;
-    height: 4px;
-    border-radius: 2px;
+    height: 6px;
+    border-radius: 100px;
     outline: none;
     cursor: pointer;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.25);
     transition: background 0.1s;
   }
 
   .expanded-volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background-color: #ffffff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 2px 6px rgba(0,0,0,0.4);
     transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   }
   
   .expanded-volume-slider:hover::-webkit-slider-thumb {
-    transform: scale(1.6);
+    transform: scale(1.4);
   }
 
   /* Apple Music Synced Lyrics & Queue Sheets (Replaces Artwork area) */
