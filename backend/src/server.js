@@ -129,20 +129,29 @@ fastify.get('/api/stream/:id', async (request, reply) => {
       throw new Error(`YouTube CDN returned ${response.status} ${response.statusText}`);
     }
 
-    reply.status(response.status);
-    reply.header('content-type', response.headers.get('content-type') || audioFormat.mime_type);
-    
+    // Bypass Fastify's chunking wrapper by writing directly to the Node.js raw response object.
+    // This preserves exact Content-Length headers, preventing Safari from incorrectly doubling audio duration.
+    const rawRes = reply.raw;
+    const headers = {
+      'content-type': response.headers.get('content-type') || audioFormat.mime_type,
+      'accept-ranges': 'bytes',
+      'cache-control': 'public, max-age=31536000',
+    };
+
     if (response.headers.has('content-length')) {
-      reply.header('content-length', response.headers.get('content-length'));
+      headers['content-length'] = response.headers.get('content-length');
     }
     if (response.headers.has('content-range')) {
-      reply.header('content-range', response.headers.get('content-range'));
+      headers['content-range'] = response.headers.get('content-range');
     }
-    reply.header('accept-ranges', 'bytes');
-    reply.header('cache-control', 'public, max-age=31536000');
 
-    // Send the response body stream to Fastify
-    return reply.send(Readable.fromWeb(response.body));
+    rawRes.writeHead(response.status, headers);
+    
+    const nodeStream = Readable.fromWeb(response.body);
+    nodeStream.pipe(rawRes);
+    
+    reply.sent = true;
+    return;
   } catch (primaryError) {
     fastify.log.warn(`[Streaming Proxy] Primary download failed for ${id}: ${primaryError.message}`);
   }
