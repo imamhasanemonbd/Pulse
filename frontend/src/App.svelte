@@ -2603,6 +2603,7 @@
     top: 0;
     left: 0;
     right: 0;
+    bottom: 0;
     background: radial-gradient(circle at 50% 30%, #141130 0%, #200819 50%, #030305 100%);
     z-index: 120;
     display: flex;
