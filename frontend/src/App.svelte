@@ -1130,7 +1130,7 @@
         {#if isSearching}
           <div class="search-loader-container">
             <div class="ios-loading-spinner"></div>
-            <p>Searching Apple Music...</p>
+            <p>Searching Pulse...</p>
           </div>
         {:else if results.length === 0}
           <div class="empty-shelf-card">
@@ -1526,6 +1526,14 @@
       on:touchmove={handleTouchMove}
       on:touchend={handleTouchEnd}
     >
+      <!-- Ambient Dynamic Liquid Backdrop for the Player -->
+      <div class="player-backdrop">
+        {#if currentTrack}
+          <img src={currentTrack.thumbnail} alt="" class="player-backdrop-image" />
+        {#/if}
+        <div class="player-backdrop-overlay"></div>
+      </div>
+
       <!-- Drag handle for swipe close visual cue -->
       <div class="swipe-dismiss-handle">
         <span class="handle-bar"></span>
@@ -2604,7 +2612,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(circle at 50% 30%, #141130 0%, #200819 50%, #030305 100%);
+    background: transparent;
     z-index: 120;
     display: flex;
     flex-direction: column;
@@ -2620,6 +2628,39 @@
 
   .expanded-player-sheet.no-transition {
     transition: none !important;
+  }
+
+  /* Player Dynamic Ambient Backdrop */
+  .player-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -1;
+    overflow: hidden;
+    background-color: #030305;
+  }
+
+  .player-backdrop-image {
+    width: 180%;
+    height: 180%;
+    object-fit: cover;
+    position: absolute;
+    top: -40%;
+    left: -40%;
+    filter: blur(110px) saturate(220%);
+    opacity: 0.28;
+    transition: all 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .player-backdrop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 50% 30%, transparent 10%, rgba(3, 3, 5, 0.8) 50%, #030305 95%);
   }
 
   /* Drag handle at the top */
