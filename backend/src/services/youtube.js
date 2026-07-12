@@ -397,6 +397,32 @@ export async function getStreamDetails(videoId) {
     }
   }
 
+  // 4. Proxy Fallback: if all direct clients failed (usually because of datacenter IP block),
+  // try routing the player request through the Cloudflare Worker proxy.
+  if (!info && process.env.YT_PROXY_WORKER) {
+    try {
+      console.log('[YouTube Service] Trying proxy stream info using proxy worker client...');
+      const proxyClient = await createInnertubeClient({ useProxy: true, useCookies: false });
+      const candidateInfo = await proxyClient.getInfo(videoId);
+      
+      const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
+                                  candidateInfo.streaming_data?.formats?.length > 0;
+                                  
+      if (candidateInfo && hasStreamingFormats) {
+        info = candidateInfo;
+        console.log('[YouTube Service] Successfully resolved stream info using proxy worker.');
+      } else {
+        const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
+        console.warn(`[YouTube Service] Proxy client returned no streaming formats: ${reason}`);
+        errors.push(`ProxyClient: ${reason}`);
+      }
+    } catch (e) {
+      const errMsg = e.message || e.toString();
+      console.warn(`[YouTube Service] Proxy client failed: ${errMsg}`);
+      errors.push(`ProxyClient: ${errMsg}`);
+    }
+  }
+
   if (!info) {
     throw new Error(`Failed to resolve video stream details with all client profiles. Errors: ${errors.join(' | ')}`);
   }
