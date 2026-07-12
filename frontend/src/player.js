@@ -88,6 +88,21 @@ export function getAudioElement() {
 }
 
 /**
+ * Update playback position state for Lockscreen scrubbers.
+ */
+function updatePlaybackPosition() {
+  if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+    if (!isNaN(audio.duration) && !isNaN(audio.currentTime)) {
+      navigator.mediaSession.setPositionState({
+        duration: audio.duration,
+        playbackRate: audio.playbackRate || 1.0,
+        position: audio.currentTime
+      });
+    }
+  }
+}
+
+/**
  * Update mediaSession metadata on iOS/Android lock screen.
  */
 function updateMediaSession(track) {
@@ -105,46 +120,34 @@ function updateMediaSession(track) {
       ]
     });
     navigator.mediaSession.playbackState = 'playing';
-  }
-}
 
-/**
- * Update playback position state for Lockscreen scrubbers.
- */
-function updatePlaybackPosition() {
-  if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
-    if (!isNaN(audio.duration) && !isNaN(audio.currentTime)) {
-      navigator.mediaSession.setPositionState({
-        duration: audio.duration,
-        playbackRate: audio.playbackRate || 1.0,
-        position: audio.currentTime
+    // Re-register action handlers on every metadata update.
+    // This forces Android Chrome to display the next/previous track controls in the system notification.
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        play();
       });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        pause();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        if (playerHooks.onPrevious) playerHooks.onPrevious();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        if (playerHooks.onNext) playerHooks.onNext();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.fastSeek && 'fastSeek' in audio) {
+          audio.fastSeek(details.seekTime);
+        } else {
+          audio.currentTime = details.seekTime;
+        }
+        updatePlaybackPosition();
+      });
+    } catch (e) {
+      console.warn('[Player] MediaSession action handler registration failed:', e);
     }
   }
-}
-
-// Register Native Media Session control hooks
-if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => {
-    play();
-  });
-  navigator.mediaSession.setActionHandler('pause', () => {
-    pause();
-  });
-  navigator.mediaSession.setActionHandler('previoustrack', () => {
-    if (playerHooks.onPrevious) playerHooks.onPrevious();
-  });
-  navigator.mediaSession.setActionHandler('nexttrack', () => {
-    if (playerHooks.onNext) playerHooks.onNext();
-  });
-  navigator.mediaSession.setActionHandler('seekto', (details) => {
-    if (details.fastSeek && 'fastSeek' in audio) {
-      audio.fastSeek(details.seekTime);
-    } else {
-      audio.currentTime = details.seekTime;
-    }
-    updatePlaybackPosition();
-  });
 }
 
 // Audio Element event listeners
