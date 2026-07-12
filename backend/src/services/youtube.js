@@ -220,13 +220,24 @@ function parseSongItem(item) {
       }
     }
 
-    // Extract the highest quality thumbnail
+    // Extract the highest quality thumbnail and upgrade to maximum resolution
     let thumbnail = '';
     const thumbs = item.thumbnail?.contents || item.thumbnail || item.thumbnails;
     if (Array.isArray(thumbs) && thumbs.length > 0) {
       thumbnail = thumbs[thumbs.length - 1].url || thumbs[0].url || '';
     } else if (thumbs && typeof thumbs === 'object') {
       thumbnail = thumbs.url || '';
+    }
+
+    if (thumbnail) {
+      // 1. YouTube Music artwork on googleusercontent/ggpht (default w120 -> w720)
+      if (thumbnail.includes('googleusercontent.com') || thumbnail.includes('ggpht.com')) {
+        thumbnail = thumbnail.replace(/=w\d+-h\d+/, '=w720-h720').replace(/-w\d+-h\d+/, '-w720-h720');
+      }
+      // 2. YouTube Video thumbnails (upgrade to HD hq720.jpg)
+      else if (thumbnail.includes('i.ytimg.com/vi/')) {
+        thumbnail = thumbnail.replace(/(default|mqdefault|hqdefault|sddefault)\.jpg/, 'hq720.jpg');
+      }
     }
 
     return { id, title, artist, duration, thumbnail };
