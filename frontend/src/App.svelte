@@ -1668,19 +1668,6 @@
               <circle cx="12" cy="19" r="1.5"></circle>
             </svg>
           </button>
-          {#if showPlayerMenu}
-            <div class="player-glass-dropdown" on:click={(e) => e.stopPropagation()}>
-              <button class="player-dropdown-item" on:click={handlePlayerAddToPlaylist}>
-                <span class="player-dropdown-icon">➕</span> Add to Playlist
-              </button>
-              <button class="player-dropdown-item" on:click={handlePlayerShare}>
-                <span class="player-dropdown-icon">🔗</span> Share Track
-              </button>
-              <button class="player-dropdown-item" on:click={handlePlayerSearchArtist}>
-                <span class="player-dropdown-icon">👤</span> Search Artist
-              </button>
-            </div>
-          {/if}
         </div>
       </header>
 
@@ -1907,6 +1894,42 @@
           </svg>
         </button>
       </footer>
+
+      <!-- Bottom Action Sheet Overlay (Apple Music styled) -->
+      {#if showPlayerMenu}
+        <div class="player-menu-overlay" on:click={() => showPlayerMenu = false}></div>
+        <div class="player-bottom-sheet" on:click={(e) => e.stopPropagation()}>
+          <!-- Sheet handle indicator -->
+          <div class="sheet-handle">
+            <span class="sheet-handle-bar"></span>
+          </div>
+
+          <!-- Song Meta Header inside sheet -->
+          <div class="sheet-song-meta">
+            <img class="sheet-song-thumb" src={currentTrack ? getHighResThumbnail(currentTrack.thumbnail) : '/icon.png'} alt="" />
+            <div class="sheet-song-details">
+              <span class="sheet-song-title">{currentTrack ? currentTrack.title : ''}</span>
+              <span class="sheet-song-artist">{currentTrack ? currentTrack.artist : ''}</span>
+            </div>
+          </div>
+
+          <!-- List of Actions -->
+          <div class="sheet-actions-list">
+            <button class="sheet-action-item" on:click={handlePlayerAddToPlaylist}>
+              <span class="sheet-action-icon">➕</span> Add to Playlist
+            </button>
+            <button class="sheet-action-item" on:click={handlePlayerShare}>
+              <span class="sheet-action-icon">🔗</span> Share Track
+            </button>
+            <button class="sheet-action-item" on:click={handlePlayerSearchArtist}>
+              <span class="sheet-action-icon">👤</span> Search Artist
+            </button>
+            <button class="sheet-action-item cancel-item" on:click={() => showPlayerMenu = false}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      {/if}
       
     </div>
 
@@ -2892,49 +2915,158 @@
     opacity: 1;
   }
 
-  .player-glass-dropdown {
+  /* Bottom Action Sheet Overlay & Bottom Sheet styles */
+  .player-menu-overlay {
     position: absolute;
-    top: 36px;
+    top: 0;
+    left: 0;
     right: 0;
-    background: rgba(25, 25, 30, 0.85);
-    backdrop-filter: blur(25px) saturate(180%);
-    -webkit-backdrop-filter: blur(25px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 12px;
-    width: 160px;
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    z-index: 210;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    animation: fadeInDropdown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 150;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    animation: fadeInOverlay 0.25s ease-out;
   }
 
-  .player-dropdown-item {
-    background: none;
-    border: none;
+  @keyframes fadeInOverlay {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .player-bottom-sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(20, 20, 25, 0.88);
+    backdrop-filter: blur(35px) saturate(210%);
+    -webkit-backdrop-filter: blur(35px) saturate(210%);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    padding: 12px 18px calc(24px + env(safe-area-inset-bottom, 0px)) 18px;
+    box-sizing: border-box;
+    z-index: 160;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
+    animation: slideUpSheet 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slideUpSheet {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .sheet-handle {
+    width: 100%;
+    height: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .sheet-handle-bar {
+    width: 36px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 100px;
+  }
+
+  .sheet-song-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 4px 8px 12px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .sheet-song-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    object-fit: cover;
+  }
+
+  .sheet-song-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .sheet-song-title {
+    font-size: 0.95rem;
+    font-weight: 700;
     color: #ffffff;
-    font-size: 0.85rem;
-    font-weight: 500;
-    padding: 8px 10px;
-    border-radius: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sheet-song-artist {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+
+  .sheet-actions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sheet-action-item {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 14px;
+    border-radius: 14px;
     cursor: pointer;
     text-align: left;
     display: flex;
     align-items: center;
-    gap: 8px;
-    transition: background 0.15s;
+    gap: 12px;
+    transition: all 0.2s;
     width: 100%;
   }
 
-  .player-dropdown-item:hover {
-    background: rgba(255, 255, 255, 0.1);
+  .sheet-action-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
   }
 
-  .player-dropdown-icon {
-    font-size: 1rem;
-    display: inline-block;
+  .sheet-action-item:active {
+    transform: scale(0.98);
+  }
+
+  .sheet-action-icon {
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+  }
+
+  .sheet-action-item.cancel-item {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    justify-content: center;
+    font-weight: 700;
+    color: #ffffff;
+    margin-top: 8px;
+  }
+
+  .sheet-action-item.cancel-item:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
 
   /* Custom switchable center viewport */
