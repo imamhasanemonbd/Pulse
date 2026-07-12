@@ -698,13 +698,25 @@
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   }
 
+  // Helper to upgrade thumbnail URLs to high definition on client-side
+  function getHighResThumbnail(url) {
+    if (!url) return '/icon.png';
+    if (url.includes('googleusercontent.com') || url.includes('ggpht.com')) {
+      return url.replace(/=w\d+-h\d+/, '=w720-h720').replace(/-w\d+-h\d+/, '-w720-h720');
+    }
+    if (url.includes('i.ytimg.com/vi/')) {
+      return url.replace(/(default|mqdefault|hqdefault|sddefault)\.jpg/, 'hq720.jpg');
+    }
+    return url;
+  }
+
   $: isCurrentTrackLiked = currentTrack && likedTracks.some(t => t.id === currentTrack.id);
 </script>
 
 <!-- Ambient Dynamic Liquid Backdrop -->
 <div class="dynamic-backdrop">
   {#if currentTrack}
-    <img src={currentTrack.thumbnail} alt="" class="backdrop-image" />
+    <img src={getHighResThumbnail(currentTrack.thumbnail)} alt="" class="backdrop-image" />
   {:else}
     <div class="default-backdrop-gradient"></div>
   {/if}
@@ -1529,7 +1541,7 @@
       <!-- Ambient Dynamic Liquid Backdrop for the Player -->
       <div class="player-backdrop">
         {#if currentTrack}
-          <img src={currentTrack.thumbnail} alt="" class="player-backdrop-image" />
+          <img src={getHighResThumbnail(currentTrack.thumbnail)} alt="" class="player-backdrop-image" />
         {/if}
         <div class="player-backdrop-overlay"></div>
       </div>
@@ -1626,7 +1638,7 @@
           <!-- Default View: Giant Album Art Card -->
           <div class="expanded-art-section">
             <div class="expanded-art-wrapper {isPlaying ? 'playing' : ''}">
-              <img class="expanded-art-img" src={currentTrack ? currentTrack.thumbnail : '/icon.png'} alt="" />
+              <img class="expanded-art-img" src={currentTrack ? getHighResThumbnail(currentTrack.thumbnail) : '/icon.png'} alt="" />
             </div>
           </div>
         {/if}
@@ -2778,19 +2790,21 @@
   }
 
   .expanded-art-wrapper {
-    width: 230px;
-    height: 230px;
+    width: 88%;
+    max-width: 330px;
+    aspect-ratio: 1 / 1;
+    height: auto;
     border-radius: 24px;
     overflow: hidden;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.45s ease;
     transform: scale(0.9);
     background-color: #1a1a1a;
   }
 
   .expanded-art-wrapper.playing {
-    transform: scale(1.02);
-    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.7);
+    transform: scale(1.0);
+    box-shadow: 0 28px 60px rgba(0, 0, 0, 0.65);
   }
 
   .expanded-art-img {
@@ -3994,8 +4008,10 @@
     }
 
     .expanded-art-wrapper {
-      width: 170px;
-      height: 170px;
+      width: 55%;
+      max-width: 180px;
+      aspect-ratio: 1 / 1;
+      height: auto;
       border-radius: 16px;
     }
 
