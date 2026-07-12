@@ -56,6 +56,7 @@
 
   // Option dropdown state
   let activeTrackMenuId = null;
+  let showPlayerMenu = false;
 
   // Authentication state
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -593,6 +594,40 @@
 
   function closeTrackMenu() {
     activeTrackMenuId = null;
+    showPlayerMenu = false;
+  }
+
+  function togglePlayerMenu() {
+    showPlayerMenu = !showPlayerMenu;
+  }
+
+  function handlePlayerAddToPlaylist() {
+    playlistSelectorTrack = currentTrack;
+    showPlayerMenu = false;
+  }
+
+  function handlePlayerShare() {
+    showPlayerMenu = false;
+    const shareUrl = `${window.location.origin}/?track=${currentTrack.id}`;
+    if (navigator.share) {
+      navigator.share({
+        title: currentTrack.title,
+        text: `Listen to ${currentTrack.title} by ${currentTrack.artist} on Pulse!`,
+        url: shareUrl
+      }).catch(console.error);
+    } else {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        alert('Song link copied to clipboard!');
+      });
+    }
+  }
+
+  function handlePlayerSearchArtist() {
+    showPlayerMenu = false;
+    isPlayerExpanded = false;
+    activeTab = 'search';
+    query = currentTrack.artist;
+    searchMusic();
   }
 
   function playNext(track, e) {
@@ -1625,16 +1660,28 @@
             Queue
           </button>
         </div>
-        <button class="menu-sheet-btn" on:click={() => { isPlayerExpanded = false; activeTab = 'library'; }}>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="8" y1="6" x2="21" y2="6"></line>
-            <line x1="8" y1="12" x2="21" y2="12"></line>
-            <line x1="8" y1="18" x2="21" y2="18"></line>
-            <line x1="3" y1="6" x2="3.01" y2="6"></line>
-            <line x1="3" y1="12" x2="3.01" y2="12"></line>
-            <line x1="3" y1="18" x2="3.01" y2="18"></line>
-          </svg>
-        </button>
+        <div class="player-menu-container">
+          <button class="menu-sheet-btn" on:click={(e) => { e.stopPropagation(); togglePlayerMenu(); }}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="1.5"></circle>
+              <circle cx="12" cy="5" r="1.5"></circle>
+              <circle cx="12" cy="19" r="1.5"></circle>
+            </svg>
+          </button>
+          {#if showPlayerMenu}
+            <div class="player-glass-dropdown" on:click={(e) => e.stopPropagation()}>
+              <button class="player-dropdown-item" on:click={handlePlayerAddToPlaylist}>
+                <span class="player-dropdown-icon">➕</span> Add to Playlist
+              </button>
+              <button class="player-dropdown-item" on:click={handlePlayerShare}>
+                <span class="player-dropdown-icon">🔗</span> Share Track
+              </button>
+              <button class="player-dropdown-item" on:click={handlePlayerSearchArtist}>
+                <span class="player-dropdown-icon">👤</span> Search Artist
+              </button>
+            </div>
+          {/if}
+        </div>
       </header>
 
       <!-- Dynamic Center Segment (Album Art OR Synced Lyrics OR Queue List) -->
@@ -2820,6 +2867,12 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.2);
   }
 
+  .player-menu-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
   .menu-sheet-btn {
     background: none;
     border: none;
@@ -2829,6 +2882,59 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 8px;
+    border-radius: 50%;
+    transition: background 0.2s, opacity 0.2s;
+  }
+
+  .menu-sheet-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    opacity: 1;
+  }
+
+  .player-glass-dropdown {
+    position: absolute;
+    top: 36px;
+    right: 0;
+    background: rgba(25, 25, 30, 0.85);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    width: 160px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 210;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    animation: fadeInDropdown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .player-dropdown-item {
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s;
+    width: 100%;
+  }
+
+  .player-dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .player-dropdown-icon {
+    font-size: 1rem;
+    display: inline-block;
   }
 
   /* Custom switchable center viewport */
