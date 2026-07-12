@@ -1530,7 +1530,7 @@
       <div class="player-backdrop">
         {#if currentTrack}
           <img src={currentTrack.thumbnail} alt="" class="player-backdrop-image" />
-        {#/if}
+        {/if}
         <div class="player-backdrop-overlay"></div>
       </div>
 
