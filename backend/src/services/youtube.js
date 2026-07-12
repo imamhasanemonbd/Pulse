@@ -156,26 +156,36 @@ async function createInnertubeClient({ useProxy = false, useCookies = false } = 
 export { activeRefreshPromise };
 
 let ytMusic = null;
-let ytVR = null;
+let lastMusicInit = 0;
+let ytStream = null;
+let lastStreamInit = 0;
+
+const CACHE_REFRESH_INTERVAL = 60 * 60 * 1000; // 1 hour
 
 /**
  * Initializes and caches the Innertube instance for search.
  */
 export async function getYTClient() {
-  if (!ytMusic) {
+  const now = Date.now();
+  if (!ytMusic || (now - lastMusicInit > CACHE_REFRESH_INTERVAL)) {
+    console.log('[YouTube Service] Initializing/refreshing search Innertube client...');
     ytMusic = await createInnertubeClient({ useProxy: true, useCookies: true });
+    lastMusicInit = now;
   }
   return ytMusic;
 }
 
 /**
- * Initializes and caches a separate Innertube instance for ANDROID_VR streaming.
+ * Initializes and caches the Innertube instance for streaming.
  */
-export async function getYTTVClient() {
-  if (!ytVR) {
-    ytVR = await createInnertubeClient();
+export async function getYTStreamClient() {
+  const now = Date.now();
+  if (!ytStream || (now - lastStreamInit > CACHE_REFRESH_INTERVAL)) {
+    console.log('[YouTube Service] Initializing/refreshing streaming Innertube client with PO Token...');
+    ytStream = await createInnertubeClient({ useProxy: false, useCookies: false });
+    lastStreamInit = now;
   }
-  return ytVR;
+  return ytStream;
 }
 
 /**
@@ -294,8 +304,7 @@ export async function getStreamDetails(videoId) {
   }
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
   // We do NOT use the proxy for streaming because YouTube blocks Cloudflare Worker IPs on player requests.
-  // Instead, we connect directly from the VPS and use the dynamically cached PO Token, which successfully bypasses blocks.
-  const client = await createInnertubeClient({ useProxy: false, useCookies: false });
+  const client = await getYTStreamClient();
   
   let info = null;
   let errors = [];

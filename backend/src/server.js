@@ -105,20 +105,44 @@ fastify.get('/api/stream/:id', async (request, reply) => {
     return reply.status(400).send({ error: 'Track ID is required' });
   }
 
-  // Method 1: Try youtubei.js built-in download
+  // Method 1: Try direct streaming with cached client & Range request support
   try {
     const { client, info } = await getStreamDetails(id);
-    fastify.log.info(`[Streaming Proxy] Video: ${id}, trying info.download()...`);
+    fastify.log.info(`[Streaming Proxy] Video: ${id}, resolving direct format url...`);
 
-    const downloadStream = await info.download({ type: 'audio', quality: 'best' });
+    const formats = info.streaming_data?.adaptive_formats || [];
+    const audioFormat = formats.filter(f => f.mime_type?.includes('audio'))[0];
+    
+    if (!audioFormat || !audioFormat.url) {
+      throw new Error('No direct stream URL found in format');
+    }
 
-    reply.status(200);
-    reply.header('content-type', 'audio/webm');
+    // Forward the Range header from the client to YouTube CDN
+    const rangeHeader = request.headers.range;
+    const fetchHeaders = {};
+    if (rangeHeader) {
+      fetchHeaders.Range = rangeHeader;
+    }
+
+    const response = await fetch(audioFormat.url, { headers: fetchHeaders });
+    if (!response.ok && response.status !== 206) {
+      throw new Error(`YouTube CDN returned ${response.status} ${response.statusText}`);
+    }
+
+    reply.status(response.status);
+    reply.header('content-type', response.headers.get('content-type') || audioFormat.mime_type);
+    
+    if (response.headers.has('content-length')) {
+      reply.header('content-length', response.headers.get('content-length'));
+    }
+    if (response.headers.has('content-range')) {
+      reply.header('content-range', response.headers.get('content-range'));
+    }
     reply.header('accept-ranges', 'bytes');
     reply.header('cache-control', 'public, max-age=31536000');
 
-    const nodeStream = Readable.fromWeb(downloadStream);
-    return reply.send(nodeStream);
+    // Send the response body stream to Fastify
+    return reply.send(Readable.fromWeb(response.body));
   } catch (primaryError) {
     fastify.log.warn(`[Streaming Proxy] Primary download failed for ${id}: ${primaryError.message}`);
   }
