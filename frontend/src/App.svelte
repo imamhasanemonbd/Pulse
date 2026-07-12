@@ -57,6 +57,8 @@
   // Option dropdown state
   let activeTrackMenuId = null;
   let showPlayerMenu = false;
+  let showCreatePlaylistModal = false;
+  let newPlaylistName = '';
 
   // Authentication state
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -507,15 +509,21 @@
     }
   }
 
-  async function createPlaylist() {
-    const name = prompt("Enter playlist name:");
-    if (!name || name.trim() === "") return;
+  function createPlaylist() {
+    newPlaylistName = '';
+    showCreatePlaylistModal = true;
+  }
+
+  async function confirmCreatePlaylist() {
+    const name = newPlaylistName.trim();
+    if (!name) return;
+    showCreatePlaylistModal = false;
 
     if (authToken) {
       try {
         const res = await apiFetch('/api/user/playlists', {
           method: 'POST',
-          body: JSON.stringify({ name: name.trim() }),
+          body: JSON.stringify({ name }),
         });
         if (res.ok) {
           const pl = await res.json();
@@ -529,7 +537,7 @@
     // Fallback to local
     const newPlaylist = {
       id: 'pl_' + Date.now(),
-      name: name.trim(),
+      name,
       tracks: []
     };
     playlists = [...playlists, newPlaylist];
@@ -1954,7 +1962,26 @@
     </div>
 
   </div>
-</div>
+<!-- Custom Glassmorphism Playlist Creator Dialog (Replaces ugly browser window prompt) -->
+{#if showCreatePlaylistModal}
+  <div class="custom-prompt-overlay" on:click={() => showCreatePlaylistModal = false}>
+    <div class="custom-prompt-modal" on:click={(e) => e.stopPropagation()}>
+      <h3>New Playlist</h3>
+      <p>Enter a name for this playlist.</p>
+      <input 
+        type="text" 
+        bind:value={newPlaylistName} 
+        placeholder="Playlist Title" 
+        autofocus 
+        on:keydown={(e) => e.key === 'Enter' && confirmCreatePlaylist()}
+      />
+      <div class="prompt-modal-buttons">
+        <button class="prompt-btn-cancel" on:click={() => showCreatePlaylistModal = false}>Cancel</button>
+        <button class="prompt-btn-confirm" disabled={!newPlaylistName.trim()} on:click={confirmCreatePlaylist}>Create</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   :global(body) {
@@ -1966,6 +1993,137 @@
     overflow: hidden;
     height: 100dvh;
     width: 100vw;
+  }
+
+  /* Custom Glassmorphism Prompt Modal Styles */
+  .custom-prompt-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+
+  .custom-prompt-modal {
+    background: rgba(30, 30, 35, 0.82);
+    backdrop-filter: blur(35px) saturate(210%);
+    -webkit-backdrop-filter: blur(35px) saturate(210%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 24px;
+    width: 100%;
+    max-width: 320px;
+    padding: 22px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+    box-shadow: 0 25px 65px rgba(0, 0, 0, 0.6);
+    animation: scaleUpPrompt 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes scaleUpPrompt {
+    from { transform: scale(0.92); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  .custom-prompt-modal h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0;
+    color: #ffffff;
+    letter-spacing: -0.3px;
+  }
+
+  .custom-prompt-modal p {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.55);
+    margin: 0 0 4px 0;
+  }
+
+  .custom-prompt-modal input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-sizing: border-box;
+    color: #ffffff;
+    outline: none;
+    font-size: 1rem;
+    font-family: inherit;
+    text-align: center;
+    transition: all 0.2s;
+  }
+
+  .custom-prompt-modal input:focus {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+  }
+
+  .prompt-modal-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .custom-prompt-modal button {
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .prompt-btn-cancel {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .prompt-btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+
+  .prompt-btn-cancel:active {
+    transform: scale(0.97);
+  }
+
+  .prompt-btn-confirm {
+    background: #ff2d55;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(255, 45, 85, 0.25);
+  }
+
+  .prompt-btn-confirm:hover:not(:disabled) {
+    background: #ff3b64;
+    box-shadow: 0 4px 16px rgba(255, 45, 85, 0.35);
+  }
+
+  .prompt-btn-confirm:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .prompt-btn-confirm:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
   }
 
   /* Dynamic blur background */
