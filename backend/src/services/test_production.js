@@ -1,33 +1,47 @@
-import { getStreamDetails } from './youtube.js';
-import dotenv from 'dotenv';
-dotenv.config();
-
-// Ensure the proxy worker environment variable is set
-process.env.YT_PROXY_WORKER = 'https://polished-band-70c2.imamhasanemonbd.workers.dev';
-// Ensure YT_COOKIES is set if available
-process.env.YT_COOKIES = process.env.YT_COOKIES || '';
-
-async function testProductionCode() {
-  const videoId = 'tdnkkMK3N88';
+async function testCobalt() {
+  const videoId = 'fsiPzT50ZiM';
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
   
-  try {
-    console.log(`Calling getStreamDetails for videoId: ${videoId}...`);
-    const { client, info } = await getStreamDetails(videoId);
-    
-    console.log('Successfully resolved stream details! Downloading first chunk...');
-    const downloadStream = await info.download({ type: 'audio', quality: 'best' });
-    
-    const reader = downloadStream.getReader();
-    const { value, done } = await reader.read();
-    
-    if (value && value.length > 0) {
-      console.log(`SUCCESS! Read first chunk of size: ${value.length} bytes.`);
-    } else {
-      console.warn('Read empty chunk.');
+  const instances = [
+    'https://api.cobalt.tools',
+    'https://cobalt.api.ryz.cx',
+    'https://api.cobalt.lol',
+  ];
+
+  for (const instance of instances) {
+    try {
+      console.log(`Trying Cobalt instance: ${instance}`);
+      const response = await fetch(`${instance}/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          url,
+          downloadMode: 'audio',
+          audioFormat: 'best'
+        })
+      });
+
+      console.log(`Status: ${response.status}`);
+      const data = await response.json();
+      console.log('Response:', data);
+      if (data.url) {
+        console.log(`SUCCESS! URL: ${data.url}`);
+        
+        // Test downloading 100 bytes directly from VPS
+        const dlResp = await fetch(data.url, { headers: { Range: 'bytes=0-99' } });
+        console.log(`VPS Download Status: ${dlResp.status}`);
+        if (dlResp.ok || dlResp.status === 206) {
+          console.log('SUCCESS! Cobalt direct stream works!');
+          return;
+        }
+      }
+    } catch (e) {
+      console.error(`Failed: ${e.message}`);
     }
-  } catch (e) {
-    console.error(`FAILED: ${e.message}`, e.stack);
   }
 }
 
-testProductionCode();
+testCobalt();

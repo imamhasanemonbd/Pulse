@@ -294,7 +294,7 @@ export async function getStreamDetails(videoId) {
   }
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
   // We use the proxy for streaming to bypass YouTube CDN IP blocks (direct downloads from VPS fail with 403).
-  const client = await createInnertubeClient({ useProxy: true });
+  const client = await createInnertubeClient({ useProxy: true, useCookies: true });
   
   let info = null;
   let errors = [];
