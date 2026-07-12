@@ -1962,6 +1962,7 @@
     </div>
 
   </div>
+</div>
 <!-- Custom Glassmorphism Playlist Creator Dialog (Replaces ugly browser window prompt) -->
 {#if showCreatePlaylistModal}
   <div class="custom-prompt-overlay" on:click={() => showCreatePlaylistModal = false}>
