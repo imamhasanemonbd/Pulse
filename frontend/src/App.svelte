@@ -1521,7 +1521,7 @@
     <!-- Expanded Player Full Sheet (Liquid Glass) with swipe event hooks -->
     <div 
       class="expanded-player-sheet {isPlayerExpanded ? 'active' : ''} {isDragging ? 'no-transition' : ''}"
-      style="transform: translateY({isPlayerExpanded ? (isDragging ? dragY + 'px' : '0') : '100%'})"
+      style="transform: translateY({isPlayerExpanded ? (isDragging ? dragY + 'px' : '0') : 'calc(100% + 80px)'})"
       on:touchstart={handleTouchStart}
       on:touchmove={handleTouchMove}
       on:touchend={handleTouchEnd}
@@ -1538,7 +1538,17 @@
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </button>
-        <span class="expanded-header-title">Now Playing</span>
+        <div class="player-header-tabs">
+          <button class="player-header-tab {!showLyrics && !showQueue ? 'active' : ''}" on:click={() => { showLyrics = false; showQueue = false; }}>
+            Player
+          </button>
+          <button class="player-header-tab {showLyrics ? 'active' : ''}" on:click={() => { showLyrics = true; showQueue = false; }}>
+            Lyrics
+          </button>
+          <button class="player-header-tab {showQueue ? 'active' : ''}" on:click={() => { showLyrics = false; showQueue = true; }}>
+            Queue
+          </button>
+        </div>
         <button class="menu-sheet-btn" on:click={() => { isPlayerExpanded = false; activeTab = 'library'; }}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -2661,6 +2671,36 @@
     letter-spacing: 1px;
     color: #ffffff;
     opacity: 0.5;
+  }
+
+  .player-header-tabs {
+    display: flex;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 2px;
+    border-radius: 100px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .player-header-tab {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 100px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .player-header-tab.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.2);
   }
 
   .menu-sheet-btn {
