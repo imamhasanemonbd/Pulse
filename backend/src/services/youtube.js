@@ -526,16 +526,22 @@ export async function getStreamUrlFromPiped(videoId) {
       }
 
       const data = await response.json();
-      const audioFormats = (data.adaptiveFormats || [])
-        .filter(f => f.type?.startsWith('audio/'))
-        .sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0));
+      // Prioritize audio/mp4 (AAC) formats for mobile Safari compatibility
+      let selectedFormat = (data.adaptiveFormats || [])
+        .filter(f => f.type?.includes('audio/mp4'))
+        .sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0))[0];
 
-      if (audioFormats[0]?.url) {
-        const fmt = audioFormats[0];
-        console.log(`[Invidious Fallback] Resolved from ${instance} (${fmt.type}, ${fmt.bitrate}bps)`);
+      if (!selectedFormat) {
+        selectedFormat = (data.adaptiveFormats || [])
+          .filter(f => f.type?.startsWith('audio/'))
+          .sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0))[0];
+      }
+
+      if (selectedFormat && selectedFormat.url) {
+        console.log(`[Invidious Fallback] Resolved from ${instance} (${selectedFormat.type}, ${selectedFormat.bitrate}bps)`);
         return {
-          url: fmt.url,
-          mimeType: fmt.type?.split(';')[0] || 'audio/webm'
+          url: selectedFormat.url,
+          mimeType: selectedFormat.type?.split(';')[0] || 'audio/mp4'
         };
       } else {
         console.warn(`[Invidious Fallback] ${instance} returned no audio formats`);

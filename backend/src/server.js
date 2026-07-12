@@ -148,7 +148,11 @@ fastify.get('/api/stream/:id', async (request, reply) => {
     fastify.log.info(`[Streaming Proxy] Video: ${id}, resolving direct format url...`);
 
     const formats = info.streaming_data?.adaptive_formats || [];
-    const audioFormat = formats.filter(f => f.mime_type?.includes('audio'))[0];
+    // Prioritize audio/mp4 (AAC) formats for universal mobile browser compatibility (iOS Safari / mobile Chrome)
+    let audioFormat = formats.find(f => f.mime_type?.includes('audio/mp4'));
+    if (!audioFormat) {
+      audioFormat = formats.filter(f => f.mime_type?.includes('audio'))[0];
+    }
     
     if (!audioFormat || !audioFormat.url) {
       throw new Error('No direct stream URL found in format');
