@@ -430,7 +430,10 @@ export async function getStreamDetails(videoId) {
       const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
                                   candidateInfo.streaming_data?.formats?.length > 0;
                                   
+      console.log(`[YouTube Service] Proxy candidate playability: status=${candidateInfo?.playability_status?.status}, reason=${candidateInfo?.playability_status?.reason}`);
       if (candidateInfo && hasStreamingFormats) {
+        const sampleFormat = candidateInfo.streaming_data?.adaptive_formats?.[0] || {};
+        console.log(`[YouTube Service] Proxy sample format keys: ${Object.keys(sampleFormat).join(', ')}`);
         info = candidateInfo;
         client = proxyClient;
         console.log('[YouTube Service] Successfully resolved stream info using proxy worker.');
