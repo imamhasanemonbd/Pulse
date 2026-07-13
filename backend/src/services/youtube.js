@@ -141,29 +141,32 @@ async function createInnertubeClient({ useProxy = false, useCookies = false } = 
 
   const TARGET_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)';
   
-  // Use dynamically generated and cached token if available
-  // We only use the PO Token on direct connections (useProxy is false). Supplying it via proxy
-  // for TV/ANDROID_VR client profiles causes parameter mismatch errors on YouTube.
-  if (!useProxy && cachedPoToken && cachedVisitorData) {
+  // 1. Prioritize static environment variables manually provided by the user (real browser tokens)
+  if (process.env.YT_PO_TOKEN) {
+    options.po_token = process.env.YT_PO_TOKEN;
+    options.user_agent = TARGET_USER_AGENT;
+    if (process.env.YT_VISITOR_DATA) {
+      options.visitor_data = process.env.YT_VISITOR_DATA;
+    }
+  } 
+  // 2. Otherwise fallback to dynamically generated token if it is valid
+  else if (!useProxy && cachedPoToken && cachedVisitorData && !cachedPoToken.startsWith('KoEQ')) {
     options.po_token = cachedPoToken;
     options.visitor_data = cachedVisitorData;
     options.user_agent = TARGET_USER_AGENT;
   } else if (!useProxy) {
-    // If not generated yet (e.g. at initial startup request), trigger background generation without blocking
+    // Trigger background generation if empty or broken
     refreshPoToken().catch(() => {});
-  }
-
-  // Fallback to static env variables if still empty (allow passing to proxy for authentication)
-  if (!options.po_token && process.env.YT_PO_TOKEN) {
-    options.po_token = process.env.YT_PO_TOKEN;
-    options.user_agent = TARGET_USER_AGENT;
-  }
-  if (!options.visitor_data && process.env.YT_VISITOR_DATA) {
-    options.visitor_data = process.env.YT_VISITOR_DATA;
   }
   
   if (options.po_token) {
-    console.log('[YouTube Service] Initializing Innertube client with PO Token and aligned User-Agent.');
+    if (options.po_token.startsWith('KoEQ')) {
+      options.po_token = undefined;
+      options.visitor_data = undefined;
+      console.log('[YouTube Service] Initializing Innertube client WITHOUT PO Token (blocked JSDOM token).');
+    } else {
+      console.log('[YouTube Service] Initializing Innertube client with PO Token and aligned User-Agent.');
+    }
   } else {
     console.log('[YouTube Service] Initializing Innertube client WITHOUT PO Token.');
   }
