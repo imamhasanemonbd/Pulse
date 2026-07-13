@@ -154,8 +154,18 @@ fastify.get('/api/stream/:id', async (request, reply) => {
       audioFormat = formats.filter(f => f.mime_type?.includes('audio'))[0];
     }
     
-    if (!audioFormat || !audioFormat.url) {
-      throw new Error('No direct stream URL found in format');
+    if (!audioFormat) {
+      throw new Error('No audio format found in streaming metadata');
+    }
+
+    // Decipher the signature if URL is missing (signature-protected tracks)
+    if (!audioFormat.url && typeof audioFormat.decipher === 'function') {
+      fastify.log.info(`[Streaming Proxy] Signature cipher detected, deciphering stream URL...`);
+      audioFormat.url = await audioFormat.decipher(client.session.player);
+    }
+
+    if (!audioFormat.url) {
+      throw new Error('No direct stream URL found in format after deciphering');
     }
 
     // Forward the Range header from the client to YouTube CDN
