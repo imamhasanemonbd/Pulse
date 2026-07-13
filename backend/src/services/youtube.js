@@ -191,7 +191,7 @@ export async function getYTClient() {
   const now = Date.now();
   if (!ytMusic || (now - lastMusicInit > CACHE_REFRESH_INTERVAL)) {
     console.log('[YouTube Service] Initializing/refreshing search Innertube client...');
-    ytMusic = await createInnertubeClient({ useProxy: true, useCookies: true });
+    ytMusic = await createInnertubeClient({ useProxy: false, useCookies: true });
     lastMusicInit = now;
   }
   return ytMusic;
@@ -392,7 +392,7 @@ export async function getStreamDetails(videoId) {
 
   // 3. Last resort fallback: try all other profiles
   if (!info) {
-    const fallbackProfiles = ['IOS', 'TV_EMBEDDED', 'YTMUSIC', 'WEB'];
+    const fallbackProfiles = ['IOS', 'TV_EMBEDDED', 'WEB_EMBEDDED', 'YTMUSIC', 'WEB'];
 
     for (const clientName of fallbackProfiles) {
       try {
