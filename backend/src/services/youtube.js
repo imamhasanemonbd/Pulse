@@ -337,7 +337,7 @@ export async function getStreamDetails(videoId) {
   }
   // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
   // We do NOT use the proxy for streaming because YouTube blocks Cloudflare Worker IPs on player requests.
-  const client = await getYTStreamClient();
+  let client = await getYTStreamClient();
   
   let info = null;
   let errors = [];
@@ -432,6 +432,7 @@ export async function getStreamDetails(videoId) {
                                   
       if (candidateInfo && hasStreamingFormats) {
         info = candidateInfo;
+        client = proxyClient;
         console.log('[YouTube Service] Successfully resolved stream info using proxy worker.');
       } else {
         const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
