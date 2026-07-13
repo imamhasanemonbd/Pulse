@@ -139,14 +139,27 @@ async function createInnertubeClient({ useProxy = false, useCookies = false } = 
     return await Innertube.create(options);
   }
 
-  const TARGET_USER_AGENT = process.env.YT_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+  const cleanEnvVar = (val) => {
+    if (!val) return val;
+    let s = val.trim();
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+      s = s.slice(1, -1);
+    }
+    return s.trim();
+  };
+
+  const rawUserAgent = cleanEnvVar(process.env.YT_USER_AGENT);
+  const TARGET_USER_AGENT = rawUserAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
   
+  const cleanPoToken = cleanEnvVar(process.env.YT_PO_TOKEN);
+  const cleanVisitorData = cleanEnvVar(process.env.YT_VISITOR_DATA);
+
   // 1. Prioritize static environment variables manually provided by the user (real browser tokens)
-  if (process.env.YT_PO_TOKEN) {
-    options.po_token = process.env.YT_PO_TOKEN;
+  if (cleanPoToken) {
+    options.po_token = cleanPoToken;
     options.user_agent = TARGET_USER_AGENT;
-    if (process.env.YT_VISITOR_DATA) {
-      options.visitor_data = process.env.YT_VISITOR_DATA;
+    if (cleanVisitorData) {
+      options.visitor_data = cleanVisitorData;
     }
   } 
   // 2. Otherwise fallback to dynamically generated token if it is valid
