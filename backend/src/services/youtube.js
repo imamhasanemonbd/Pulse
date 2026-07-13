@@ -153,12 +153,12 @@ async function createInnertubeClient({ useProxy = false, useCookies = false } = 
     refreshPoToken().catch(() => {});
   }
 
-  // Fallback to static env variables if still empty
-  if (!useProxy && !options.po_token && process.env.YT_PO_TOKEN) {
+  // Fallback to static env variables if still empty (allow passing to proxy for authentication)
+  if (!options.po_token && process.env.YT_PO_TOKEN) {
     options.po_token = process.env.YT_PO_TOKEN;
     options.user_agent = TARGET_USER_AGENT;
   }
-  if (!useProxy && !options.visitor_data && process.env.YT_VISITOR_DATA) {
+  if (!options.visitor_data && process.env.YT_VISITOR_DATA) {
     options.visitor_data = process.env.YT_VISITOR_DATA;
   }
   
