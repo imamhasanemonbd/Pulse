@@ -81,7 +81,8 @@ export async function getAudioStreamUrl(videoId) {
         const result = {
           url,
           mimeType: 'audio/mp4',
-          expiresAt: Date.now() + URL_CACHE_TTL
+          expiresAt: Date.now() + URL_CACHE_TTL,
+          proxy: proxyUrl || undefined
         };
         streamUrlCache.set(videoId, result);
         console.log(`[YouTube Service] Successfully resolved stream URL for ${videoId} via yt-dlp ${proxyUrl ? '(with proxy)' : ''}`);

@@ -172,7 +172,13 @@ fastify.get('/api/stream/:id', async (request, reply) => {
       headers.Range = request.headers.range;
     }
 
-    const response = await fetch(streamInfo.url, { headers });
+    const fetchOptions = { headers };
+    if (streamInfo.proxy) {
+      const { ProxyAgent } = await import('undici');
+      fetchOptions.dispatcher = new ProxyAgent(streamInfo.proxy);
+    }
+
+    const response = await fetch(streamInfo.url, fetchOptions);
     if (!response.ok && response.status !== 206) {
       throw new Error(`Upstream CDN returned ${response.status} ${response.statusText}`);
     }

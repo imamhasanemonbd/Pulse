@@ -10,6 +10,7 @@ services:
       - DATABASE_URL=file:/app/data/dev.db
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - JWT_SECRET=${JWT_SECRET}
+      - YOUTUBE_PROXY_LIST=${YOUTUBE_PROXY_LIST}
     volumes:
       - sqlite-data:/app/data
     restart: always
