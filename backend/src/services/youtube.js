@@ -41,32 +41,55 @@ export async function getAudioStreamUrl(videoId) {
     return cached;
   }
 
-  // 1. Primary: Use yt-dlp to extract high-quality audio URL (itag 140 / AAC)
-  try {
-    const proxyArg = process.env.YOUTUBE_PROXY ? `--proxy "${process.env.YOUTUBE_PROXY}" ` : '';
-    const cmd = `yt-dlp ${proxyArg}-f "140/ba[ext=m4a]/bestaudio" -g "https://www.youtube.com/watch?v=${videoId}"`;
-    const { stdout } = await execPromise(cmd, {
-      env: {
-        ...process.env,
-        PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || ''}`
-      },
-      timeout: 10000
-    });
-
-    const lines = stdout.trim().split('\n').filter(l => l.startsWith('http'));
-    if (lines.length > 0) {
-      const url = lines[0].trim();
-      const result = {
-        url,
-        mimeType: 'audio/mp4',
-        expiresAt: Date.now() + URL_CACHE_TTL
-      };
-      streamUrlCache.set(videoId, result);
-      console.log(`[YouTube Service] Successfully resolved direct stream URL for ${videoId} via yt-dlp`);
-      return result;
+  // 1. Primary: Use yt-dlp with proxy rotating logic
+  // Parse proxy list if provided (formats accepted: http://... or IP:PORT:USER:PASS separated by space/comma)
+  const proxyInput = process.env.YOUTUBE_PROXY_LIST || process.env.YOUTUBE_PROXY || '';
+  let proxyList = proxyInput.split(/[\s,]+/).map(p => p.trim()).filter(Boolean);
+  proxyList = proxyList.map(p => {
+    const parts = p.split(':');
+    if (parts.length === 4) {
+      return `http://${parts[2]}:${parts[3]}@${parts[0]}:${parts[1]}`;
     }
-  } catch (err) {
-    console.warn(`[YouTube Service] yt-dlp resolution failed for ${videoId}: ${err.message}`);
+    return p;
+  });
+
+  // If no proxies provided, we still want to try yt-dlp once without proxy
+  if (proxyList.length === 0) {
+    proxyList.push('');
+  } else {
+    // Shuffle proxies to distribute load randomly
+    proxyList = proxyList.sort(() => 0.5 - Math.random());
+    // Limit to max 3 attempts to prevent long hangs
+    if (proxyList.length > 3) proxyList.length = 3;
+  }
+
+  for (const proxyUrl of proxyList) {
+    try {
+      const proxyArg = proxyUrl ? `--proxy "${proxyUrl}" ` : '';
+      const cmd = `yt-dlp ${proxyArg}-f "140/ba[ext=m4a]/bestaudio" -g "https://www.youtube.com/watch?v=${videoId}"`;
+      const { stdout } = await execPromise(cmd, {
+        env: {
+          ...process.env,
+          PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || ''}`
+        },
+        timeout: 10000
+      });
+
+      const lines = stdout.trim().split('\n').filter(l => l.startsWith('http'));
+      if (lines.length > 0) {
+        const url = lines[0].trim();
+        const result = {
+          url,
+          mimeType: 'audio/mp4',
+          expiresAt: Date.now() + URL_CACHE_TTL
+        };
+        streamUrlCache.set(videoId, result);
+        console.log(`[YouTube Service] Successfully resolved stream URL for ${videoId} via yt-dlp ${proxyUrl ? '(with proxy)' : ''}`);
+        return result;
+      }
+    } catch (err) {
+      console.warn(`[YouTube Service] yt-dlp resolution failed for ${videoId} ${proxyUrl ? 'with proxy' : ''}: ${err.message}`);
+    }
   }
 
   // 2. Fallback: Direct Innertube player resolution
