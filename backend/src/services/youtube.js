@@ -43,7 +43,8 @@ export async function getAudioStreamUrl(videoId) {
 
   // 1. Primary: Use yt-dlp to extract high-quality audio URL (itag 140 / AAC)
   try {
-    const cmd = `yt-dlp -f "140/ba[ext=m4a]/bestaudio" -g "https://www.youtube.com/watch?v=${videoId}"`;
+    const proxyArg = process.env.YOUTUBE_PROXY ? `--proxy "${process.env.YOUTUBE_PROXY}" ` : '';
+    const cmd = `yt-dlp ${proxyArg}-f "140/ba[ext=m4a]/bestaudio" -g "https://www.youtube.com/watch?v=${videoId}"`;
     const { stdout } = await execPromise(cmd, {
       env: {
         ...process.env,
