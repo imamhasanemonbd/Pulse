@@ -102,6 +102,28 @@ export async function getAudioStreamUrl(videoId) {
     console.error(`[YouTube Service] Innertube fallback failed: ${innertubeErr.message}`);
   }
 
+  // 3. Fallback: Piped API (free open source proxy)
+  try {
+    const pipedRes = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
+    if (pipedRes.ok) {
+      const data = await pipedRes.json();
+      const audioStreams = data.audioStreams || [];
+      const bestAudio = audioStreams.find(s => s.mimeType?.includes('audio/mp4')) || audioStreams[0];
+      if (bestAudio && bestAudio.url) {
+        const result = {
+          url: bestAudio.url,
+          mimeType: bestAudio.mimeType?.split(';')[0] || 'audio/mp4',
+          expiresAt: Date.now() + URL_CACHE_TTL
+        };
+        streamUrlCache.set(videoId, result);
+        console.log(`[YouTube Service] Resolved stream URL for ${videoId} via Piped fallback`);
+        return result;
+      }
+    }
+  } catch (pipedErr) {
+    console.error(`[YouTube Service] Piped fallback failed: ${pipedErr.message}`);
+  }
+
   throw new Error(`Could not resolve audio stream URL for video: ${videoId}`);
 }
 
