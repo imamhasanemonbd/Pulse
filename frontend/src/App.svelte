@@ -165,12 +165,33 @@
     { name: 'Summer Vibes', query: 'indie pop chill beach vibe', gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.35) 0%, rgba(4, 120, 87, 0.1) 100%)', iconId: 'summer' }
   ];
 
-  // Distribute active line index linearly based on song progression
-  $: lyricLines = lyricsText ? lyricsText.split('\n').map(l => l.trim()).filter(l => l.length > 0) : [];
-  
-  $: activeLineIndex = (lyricLines.length > 0 && duration > 0)
-    ? Math.min(Math.floor(currentTime / duration * lyricLines.length), lyricLines.length - 1)
-    : -1;
+  $: lyricLines = (lyricsText ? lyricsText.split('\n').map(l => l.trim()).filter(l => l.length > 0) : []).map(line => {
+    const match = line.match(/^\[(\d+):(\d+\.\d+)\](.*)/);
+    if (match) {
+      return { time: parseInt(match[1]) * 60 + parseFloat(match[2]), text: match[3].trim() };
+    }
+    const match2 = line.match(/^\[(\d+):(\d+)\](.*)/);
+    if (match2) {
+      return { time: parseInt(match2[1]) * 60 + parseInt(match2[2]), text: match2[3].trim() };
+    }
+    return { time: null, text: line };
+  });
+
+  $: hasSyncedLyrics = lyricLines.length > 0 && lyricLines.some(l => l.time !== null);
+
+  $: activeLineIndex = (() => {
+    if (lyricLines.length === 0 || duration <= 0) return -1;
+    if (hasSyncedLyrics) {
+      let idx = -1;
+      for (let i = 0; i < lyricLines.length; i++) {
+        if (lyricLines[i].time !== null && lyricLines[i].time <= currentTime + 0.3) {
+          idx = i;
+        }
+      }
+      return idx;
+    }
+    return Math.min(Math.floor(currentTime / duration * lyricLines.length), lyricLines.length - 1);
+  })();
 
   $: activeLibrarySubView = (() => {
     if (activeLibrarySubViewId === 'liked') {
@@ -213,7 +234,8 @@
     if (!currentTrack) return;
     isLyricsLoading = true;
     try {
-      const res = await fetch(`/api/lyrics/${currentTrack.id}`);
+      const qs = new URLSearchParams({ title: currentTrack.title || '', artist: currentTrack.artist || '' });
+      const res = await fetch(`/api/lyrics/${currentTrack.id}?${qs.toString()}`);
       if (res.ok) {
         const data = await res.json();
         lyricsText = data.lyrics;
@@ -748,8 +770,12 @@
   // Tap on lyrics line to seek directly to estimated timestamp
   function seekToLine(index) {
     if (duration > 0 && lyricLines.length > 0) {
-      const targetTime = (index / lyricLines.length) * duration;
-      seek(targetTime);
+      if (hasSyncedLyrics && lyricLines[index].time !== null) {
+        seek(lyricLines[index].time);
+      } else {
+        const targetTime = (index / lyricLines.length) * duration;
+        seek(targetTime);
+      }
     }
   }
 
@@ -1597,7 +1623,7 @@
     {/if}
 
     <!-- Bottom Tab Bar -->
-    <nav class="bottom-tab-bar-glass">
+    <nav class="bottom-tab-bar-glass {isPlayerExpanded ? 'hidden-tab-bar' : ''}">
       <button 
         class="tab-bar-item {activeTab === 'home' ? 'active' : ''}" 
         on:click={() => activeTab = 'home'}
@@ -1717,7 +1743,7 @@
                   class="lyric-line-item {activeLineIndex === index ? 'active-lyric-line' : ''}"
                   on:click={() => seekToLine(index)}
                 >
-                  {line}
+                  {line.text}
                 </div>
               {/each}
               {#if lyricsSource}
@@ -2899,6 +2925,13 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     z-index: 90;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  }
+
+  .hidden-tab-bar {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
   }
 
   .tab-bar-item {

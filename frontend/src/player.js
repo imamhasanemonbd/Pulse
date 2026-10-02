@@ -20,18 +20,7 @@ let currentTrack = null;
  * to unlock audio context playback.
  */
 export function initializeAudio() {
-  if (audio.src === '') {
-    // Play a 1-second silent WAV to unlock the context
-    audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
-    audio.play()
-      .then(() => {
-        console.log('[Player] Audio context unlocked successfully.');
-        audio.pause();
-      })
-      .catch((err) => {
-        console.warn('[Player] Audio unlock deferred:', err);
-      });
-  }
+  // Mobile browsers unlock audio directly via user gesture upon clicking a song
 }
 
 /**
@@ -49,16 +38,20 @@ export async function playTrack(track) {
     playerHooks.onStateChange('loading');
   }
 
-  // Directly call local API stream proxy
-  audio.src = `/api/stream/${track.id}`;
+  const streamUrl = `/api/stream/${track.id}?cb=${Date.now()}`;
+  audio.src = streamUrl;
   audio.load();
 
   try {
     await audio.play();
   } catch (err) {
-    console.error('[Player] Playback failed: ', err);
-    if (playerHooks.onStateChange) {
-      playerHooks.onStateChange('paused');
+    if (err.name === 'AbortError') {
+      console.warn('[Player] Playback interrupted by new load request.');
+    } else {
+      console.error('[Player] Playback failed: ', err);
+      if (playerHooks.onStateChange) {
+        playerHooks.onStateChange('paused');
+      }
     }
   }
 
@@ -178,6 +171,25 @@ audio.addEventListener('timeupdate', () => {
 
 audio.addEventListener('durationchange', () => {
   updatePlaybackPosition();
+});
+
+audio.addEventListener('playing', () => {
+  if (playerHooks.onStateChange) {
+    playerHooks.onStateChange('playing');
+  }
+});
+
+audio.addEventListener('waiting', () => {
+  if (playerHooks.onStateChange) {
+    playerHooks.onStateChange('loading');
+  }
+});
+
+audio.addEventListener('error', () => {
+  console.error('[Player] Audio playback error:', audio.error);
+  if (playerHooks.onStateChange) {
+    playerHooks.onStateChange('paused');
+  }
 });
 
 audio.addEventListener('ended', () => {

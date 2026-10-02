@@ -1,226 +1,117 @@
 import { Platform, Innertube } from 'youtubei.js';
 import { exec } from 'child_process';
 import util from 'util';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 const execPromise = util.promisify(exec);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const cliPath = path.join(__dirname, 'po-token-generator.js');
 
 // Configure the javascript execution shim required by youtubei.js to decipher stream signatures
 Platform.shim.eval = async (data) => {
   return new Function(data.output)();
 };
 
-let cachedPoToken = null;
-let cachedVisitorData = null;
-let activeRefreshPromise = null;
-
-// Programmatically generate and cache a valid PO Token using the server's own IP address
-export async function refreshPoToken() {
-  if (activeRefreshPromise) {
-    return activeRefreshPromise;
-  }
-
-  activeRefreshPromise = (async () => {
-    try {
-      console.log('[YouTube Service] Auto-generating fresh PO Token & Visitor Data via sub-process...');
-      
-      // Execute the token generator in a separate process to prevent memory leaks/OOM crashes in the main server
-      const { stdout } = await execPromise(`node "${cliPath}"`);
-      const result = JSON.parse(stdout.trim());
-      
-      if (result.error) {
-        throw new Error(result.error + (result.details ? `: ${result.details}` : ''));
-      }
-      
-      cachedPoToken = result.poToken;
-      cachedVisitorData = result.visitorData;
-      console.log('[YouTube Service] Successfully generated and cached PO Token via sub-process.');
-      return { poToken: cachedPoToken, visitorData: cachedVisitorData };
-    } catch (error) {
-      console.error('[YouTube Service] Sub-process PO Token generation failed:', error.message || error);
-      return {
-        poToken: cachedPoToken || process.env.YT_PO_TOKEN,
-        visitorData: cachedVisitorData || process.env.YT_VISITOR_DATA
-      };
-    } finally {
-      activeRefreshPromise = null;
-    }
-  })();
-
-  return activeRefreshPromise;
-}
-
-// Trigger initial generation in the background immediately on module load
-refreshPoToken().catch(() => {});
-
-// Keep refreshing the PO Token every 2 hours
-setInterval(() => {
-  refreshPoToken().catch(() => {});
-}, 2 * 60 * 60 * 1000);
-
-// Helper function to create an Innertube client with optional PO Token and Visitor Data
-async function createInnertubeClient({ useProxy = false, useCookies = false } = {}) {
-  const options = {};
-
-  // If a Cloudflare Worker proxy is configured and requested, route requests through it.
-  // This bypasses YouTube's datacenter IP blocking for search and metadata.
-  if (useProxy && process.env.YT_PROXY_WORKER) {
-    const proxyBase = process.env.YT_PROXY_WORKER.replace(/\/$/, ''); // Remove trailing slash
-    options.fetch = async (input, init = {}) => {
-      let urlStr = '';
-      if (typeof input === 'string') {
-        urlStr = input;
-      } else if (input && typeof input.url === 'string') {
-        urlStr = input.url;
-      } else {
-        urlStr = String(input || '');
-      }
-
-      // Resolve relative and protocol-relative URLs
-      if (urlStr.startsWith('//')) {
-        urlStr = `https:${urlStr}`;
-      } else if (urlStr.startsWith('/')) {
-        urlStr = `https://www.youtube.com${urlStr}`;
-      } else if (!urlStr.startsWith('http') && urlStr.length > 0) {
-        urlStr = `https://www.youtube.com/${urlStr}`;
-      }
-
-      const proxiedUrl = `${proxyBase}/?url=${encodeURIComponent(urlStr)}`;
-
-      const newInit = { ...init };
-      
-      // Clean headers to prevent 403 Forbidden from target servers (like YouTube) due to Host header mismatch
-      const cleanedHeaders = new Headers();
-      if (init.headers) {
-        const headersObj = new Headers(init.headers);
-        for (const [key, value] of headersObj.entries()) {
-          cleanedHeaders.set(key, value);
-        }
-      }
-      if (typeof input === 'object' && input !== null && input.headers) {
-        const headersObj = new Headers(input.headers);
-        for (const [key, value] of headersObj.entries()) {
-          cleanedHeaders.set(key, value);
-        }
-      }
-
-      // Strip headers that cause 403 Forbidden during proxy forwarding
-      cleanedHeaders.delete('host');
-      cleanedHeaders.delete('origin');
-      cleanedHeaders.delete('referer');
-      cleanedHeaders.delete('cookie');
-      
-      newInit.headers = cleanedHeaders;
-
-      if (typeof input === 'object' && input !== null) {
-        if (!newInit.method && input.method) {
-          newInit.method = input.method;
-        }
-        if (!newInit.body && input.body) {
-          newInit.body = input.body;
-        }
-      }
-
-      return globalThis.fetch(proxiedUrl, newInit);
-    };
-    console.log(`[YouTube Service] Initializing Innertube client with Cloudflare Worker proxy: ${proxyBase}`);
-  } else {
-    console.log('[YouTube Service] Initializing Innertube client with direct connection (bypassing proxy).');
-  }
-  
-  // 1. If session cookies are provided in the environment, prioritize them for session auth.
-  // We only use cookies when explicitly requested (e.g. for search), as YouTube flags cookies on direct/VR streaming requests.
-  if (useCookies && process.env.YT_COOKIES) {
-    options.cookie = process.env.YT_COOKIES;
-    console.log('[YouTube Service] Initializing Innertube client with authenticated session cookies.');
-    return await Innertube.create(options);
-  }
-
-  const cleanEnvVar = (val) => {
-    if (!val) return val;
-    let s = val.trim();
-    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-      s = s.slice(1, -1);
-    }
-    return s.trim();
-  };
-
-  const rawUserAgent = cleanEnvVar(process.env.YT_USER_AGENT);
-  const TARGET_USER_AGENT = rawUserAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
-  
-  const cleanPoToken = cleanEnvVar(process.env.YT_PO_TOKEN);
-  const cleanVisitorData = cleanEnvVar(process.env.YT_VISITOR_DATA);
-
-  // 1. Prioritize static environment variables manually provided by the user (real browser tokens)
-  if (cleanPoToken) {
-    options.po_token = cleanPoToken;
-    options.user_agent = TARGET_USER_AGENT;
-    if (cleanVisitorData) {
-      options.visitor_data = cleanVisitorData;
-    }
-  } 
-  // 2. Otherwise fallback to dynamically generated token if it is valid
-  else if (!useProxy && cachedPoToken && cachedVisitorData && !cachedPoToken.startsWith('KoEQ')) {
-    options.po_token = cachedPoToken;
-    options.visitor_data = cachedVisitorData;
-    options.user_agent = TARGET_USER_AGENT;
-  } else if (!useProxy) {
-    // Trigger background generation if empty or broken
-    refreshPoToken().catch(() => {});
-  }
-  
-  if (options.po_token) {
-    if (options.po_token.startsWith('KoEQ')) {
-      options.po_token = undefined;
-      options.visitor_data = undefined;
-      console.log('[YouTube Service] Initializing Innertube client WITHOUT PO Token (blocked JSDOM token).');
-    } else {
-      console.log('[YouTube Service] Initializing Innertube client with PO Token and aligned User-Agent.');
-    }
-  } else {
-    console.log('[YouTube Service] Initializing Innertube client WITHOUT PO Token.');
-  }
-  
-  return await Innertube.create(options);
-}
-
-// Export active promise to allow getStreamDetails to wait for active generation if necessary
-export { activeRefreshPromise };
-
-let ytMusic = null;
-let lastMusicInit = 0;
-let ytStream = null;
-let lastStreamInit = 0;
-
-const CACHE_REFRESH_INTERVAL = 60 * 60 * 1000; // 1 hour
+let ytClient = null;
+let lastClientInit = 0;
+const CLIENT_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
 /**
- * Initializes and caches the Innertube instance for search.
+ * Direct Innertube client for metadata, search, and lyrics (no proxies)
  */
 export async function getYTClient() {
   const now = Date.now();
-  if (!ytMusic || (now - lastMusicInit > CACHE_REFRESH_INTERVAL)) {
-    console.log('[YouTube Service] Initializing/refreshing search Innertube client...');
-    ytMusic = await createInnertubeClient({ useProxy: false, useCookies: true });
-    lastMusicInit = now;
+  if (!ytClient || now - lastClientInit > CLIENT_CACHE_TTL) {
+    console.log('[YouTube Service] Initializing direct Innertube client...');
+    ytClient = await Innertube.create();
+    lastClientInit = now;
   }
-  return ytMusic;
+  return ytClient;
+}
+
+// In-memory stream URL cache: videoId -> { url, mimeType, expiresAt }
+const streamUrlCache = new Map();
+const URL_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours (YouTube URLs typically valid 6h)
+
+/**
+ * Resolves a direct audio stream URL for a given YouTube video ID.
+ * Uses local yt-dlp first for robust, ad-free, unthrottled streaming without 403 blocks.
+ * Falls back to direct Innertube extraction if needed.
+ */
+export async function getAudioStreamUrl(videoId) {
+  const cached = streamUrlCache.get(videoId);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached;
+  }
+
+  // 1. Primary: Use yt-dlp to extract high-quality audio URL (itag 140 / AAC)
+  try {
+    const cmd = `yt-dlp -f "140/ba[ext=m4a]/bestaudio" -g "https://www.youtube.com/watch?v=${videoId}"`;
+    const { stdout } = await execPromise(cmd, {
+      env: {
+        ...process.env,
+        PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || ''}`
+      },
+      timeout: 10000
+    });
+
+    const lines = stdout.trim().split('\n').filter(l => l.startsWith('http'));
+    if (lines.length > 0) {
+      const url = lines[0].trim();
+      const result = {
+        url,
+        mimeType: 'audio/mp4',
+        expiresAt: Date.now() + URL_CACHE_TTL
+      };
+      streamUrlCache.set(videoId, result);
+      console.log(`[YouTube Service] Successfully resolved direct stream URL for ${videoId} via yt-dlp`);
+      return result;
+    }
+  } catch (err) {
+    console.warn(`[YouTube Service] yt-dlp resolution failed for ${videoId}: ${err.message}`);
+  }
+
+  // 2. Fallback: Direct Innertube player resolution
+  try {
+    const client = await getYTClient();
+    for (const clientProfile of ['TV_SIMPLY', 'IOS', 'WEB']) {
+      try {
+        const info = await client.getInfo(videoId, { client: clientProfile });
+        const formats = info.streaming_data?.adaptive_formats || [];
+        const audioFormat = formats.find(f => f.itag === 140) ||
+                            formats.find(f => f.mime_type?.includes('audio/mp4')) ||
+                            formats.find(f => f.mime_type?.includes('audio'));
+        if (audioFormat) {
+          let url = audioFormat.url;
+          if (!url && typeof audioFormat.decipher === 'function') {
+            url = await audioFormat.decipher(client.session.player);
+          }
+          if (url) {
+            const result = {
+              url,
+              mimeType: audioFormat.mime_type?.split(';')[0] || 'audio/mp4',
+              expiresAt: Date.now() + URL_CACHE_TTL
+            };
+            streamUrlCache.set(videoId, result);
+            console.log(`[YouTube Service] Resolved stream URL for ${videoId} via Innertube (${clientProfile})`);
+            return result;
+          }
+        }
+      } catch (profileErr) {
+        console.warn(`[YouTube Service] Innertube profile ${clientProfile} failed: ${profileErr.message}`);
+      }
+    }
+  } catch (innertubeErr) {
+    console.error(`[YouTube Service] Innertube fallback failed: ${innertubeErr.message}`);
+  }
+
+  throw new Error(`Could not resolve audio stream URL for video: ${videoId}`);
 }
 
 /**
- * Initializes and caches the Innertube instance for streaming.
+ * Resolves video info for metadata and details.
  */
-export async function getYTStreamClient() {
-  const now = Date.now();
-  if (!ytStream || (now - lastStreamInit > CACHE_REFRESH_INTERVAL)) {
-    console.log('[YouTube Service] Initializing/refreshing streaming Innertube client with PO Token...');
-    ytStream = await createInnertubeClient({ useProxy: false, useCookies: false });
-    lastStreamInit = now;
-  }
-  return ytStream;
+export async function getStreamDetails(videoId) {
+  const client = await getYTClient();
+  const info = await client.getInfo(videoId, { client: 'TV_SIMPLY' }).catch(() => client.getInfo(videoId));
+  return { client, info };
 }
 
 /**
@@ -265,12 +156,9 @@ function parseSongItem(item) {
     }
 
     if (thumbnail) {
-      // 1. YouTube Music artwork on googleusercontent/ggpht (default w120 -> w720)
       if (thumbnail.includes('googleusercontent.com') || thumbnail.includes('ggpht.com')) {
         thumbnail = thumbnail.replace(/=w\d+-h\d+/, '=w720-h720').replace(/-w\d+-h\d+/, '-w720-h720');
-      }
-      // 2. YouTube Video thumbnails (upgrade to HD hq720.jpg)
-      else if (thumbnail.includes('i.ytimg.com/vi/')) {
+      } else if (thumbnail.includes('i.ytimg.com/vi/')) {
         thumbnail = thumbnail.replace(/(default|mqdefault|hqdefault|sddefault)\.jpg/, 'hq720.jpg');
       }
     }
@@ -297,14 +185,13 @@ function parseDurationString(str) {
 }
 
 /**
- * Search YouTube Music songs
+ * Search YouTube Music songs directly without proxies
  */
 export async function searchMusic(query) {
   const client = await getYTClient();
   const results = await client.music.search(query, { type: 'song' });
   const songs = [];
 
-  // Parse results. songs may be nested in sections or inside a shelf getter
   if (results.songs && results.songs.contents) {
     for (const item of results.songs.contents) {
       const parsed = parseSongItem(item);
@@ -321,7 +208,7 @@ export async function searchMusic(query) {
     }
   }
 
-  // Fallback to searching general video results if no songs found (handles edge queries)
+  // Fallback to general search if no song results found
   if (songs.length === 0) {
     try {
       const generalSearch = await client.search(query, { type: 'video' });
@@ -337,258 +224,3 @@ export async function searchMusic(query) {
 
   return songs;
 }
-
-/**
- * Resolves the video info and client for a video ID.
- * Returns the client and info objects so the caller can use info.download() for streaming.
- */
-export async function getStreamDetails(videoId) {
-  // If the PO token is actively generating, await it to ensure we have it before creating the streaming client
-  if (!cachedPoToken && activeRefreshPromise) {
-    console.log('[YouTube Service] Awaiting active PO Token generation before resolving stream details...');
-    await activeRefreshPromise;
-  }
-  // Always create a fresh Innertube instance for streaming to ensure player signature keys are up-to-date.
-  // We do NOT use the proxy for streaming because YouTube blocks Cloudflare Worker IPs on player requests.
-  let client = await getYTStreamClient();
-  
-  let info = null;
-  let errors = [];
-
-  // 1. Try clients that return direct, undeciphered URLs (ANDROID_VR, TV) first to avoid deciphering errors
-  const primaryProfiles = ['ANDROID_VR', 'TV'];
-  for (const clientName of primaryProfiles) {
-    try {
-      console.log(`[YouTube Service] Trying primary stream resolution client: ${clientName}`);
-      const candidateInfo = await client.getInfo(videoId, { client: clientName });
-      
-      const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
-                                  candidateInfo.streaming_data?.formats?.length > 0;
-                                  
-      if (candidateInfo && hasStreamingFormats) {
-        info = candidateInfo;
-        console.log(`[YouTube Service] Successfully resolved stream info using primary client: ${clientName}`);
-        break;
-      } else {
-        const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
-        console.warn(`[YouTube Service] Primary client ${clientName} returned no streaming formats: ${reason}`);
-        errors.push(`${clientName}: ${reason}`);
-      }
-    } catch (e) {
-      console.warn(`[YouTube Service] Primary client ${clientName} failed:`, e.message || e);
-      errors.push(`${clientName}: ${e.message || e}`);
-    }
-  }
-
-  // 2. If primary clients failed, fallback to the default client or other profiles
-  if (!info && (cachedPoToken || process.env.YT_COOKIES)) {
-    try {
-      console.log('[YouTube Service] Trying fallback stream info using default client...');
-      const candidateInfo = await client.getInfo(videoId);
-      
-      const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
-                                  candidateInfo.streaming_data?.formats?.length > 0;
-                                  
-      if (candidateInfo && hasStreamingFormats) {
-        info = candidateInfo;
-        console.log('[YouTube Service] Successfully resolved stream info using default client.');
-      } else {
-        const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
-        console.warn(`[YouTube Service] Default client returned no streaming formats: ${reason}`);
-        errors.push(`DefaultClient: ${reason}`);
-      }
-    } catch (e) {
-      console.warn('[YouTube Service] Default client failed:', e.message || e);
-      errors.push(`DefaultClient: ${e.message || e}`);
-    }
-  }
-
-  // 3. Last resort fallback: try all other profiles
-  if (!info) {
-    const fallbackProfiles = ['IOS', 'TV_EMBEDDED', 'WEB_EMBEDDED', 'YTMUSIC', 'WEB'];
-
-    for (const clientName of fallbackProfiles) {
-      try {
-        console.log(`[YouTube Service] Trying to resolve stream info using client: ${clientName}`);
-        const candidateInfo = await client.getInfo(videoId, { client: clientName });
-        
-        const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
-                                    candidateInfo.streaming_data?.formats?.length > 0;
-                                    
-        if (candidateInfo && hasStreamingFormats) {
-          info = candidateInfo;
-          console.log(`[YouTube Service] Successfully resolved stream info with client: ${clientName}`);
-          break;
-        } else {
-          const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
-          console.warn(`[YouTube Service] Client ${clientName} returned no streaming formats: ${reason}`);
-          errors.push(`${clientName}: ${reason}`);
-        }
-      } catch (e) {
-        const errMsg = e.message || e.toString();
-        console.warn(`[YouTube Service] Client ${clientName} failed: ${errMsg}`);
-        errors.push(`${clientName}: ${errMsg}`);
-      }
-    }
-  }
-
-  // 4. Proxy Fallback: if all direct clients failed (usually because of datacenter IP block),
-  // try routing the player request through the Cloudflare Worker proxy.
-  if (!info && process.env.YT_PROXY_WORKER) {
-    try {
-      console.log('[YouTube Service] Trying proxy stream info using proxy worker client...');
-      const proxyClient = await createInnertubeClient({ useProxy: true, useCookies: false });
-      const candidateInfo = await proxyClient.getInfo(videoId);
-      
-      const hasStreamingFormats = candidateInfo.streaming_data?.adaptive_formats?.length > 0 || 
-                                  candidateInfo.streaming_data?.formats?.length > 0;
-                                  
-      console.log(`[YouTube Service] Proxy candidate playability: status=${candidateInfo?.playability_status?.status}, reason=${candidateInfo?.playability_status?.reason}`);
-      if (candidateInfo && hasStreamingFormats) {
-        const sampleFormat = candidateInfo.streaming_data?.adaptive_formats?.[0] || {};
-        console.log(`[YouTube Service] Proxy sample format keys: ${Object.keys(sampleFormat).join(', ')}`);
-        info = candidateInfo;
-        client = proxyClient;
-        console.log('[YouTube Service] Successfully resolved stream info using proxy worker.');
-      } else {
-        const reason = candidateInfo?.playability_status?.reason || 'No streaming formats available';
-        console.warn(`[YouTube Service] Proxy client returned no streaming formats: ${reason}`);
-        errors.push(`ProxyClient: ${reason}`);
-      }
-    } catch (e) {
-      const errMsg = e.message || e.toString();
-      console.warn(`[YouTube Service] Proxy client failed: ${errMsg}`);
-      errors.push(`ProxyClient: ${errMsg}`);
-    }
-  }
-
-  if (!info) {
-    throw new Error(`Failed to resolve video stream details with all client profiles. Errors: ${errors.join(' | ')}`);
-  }
-
-  return { client, info };
-}
-
-// ============================================================================
-// INVIDIOUS API FALLBACK
-// Invidious is an open-source YouTube frontend that handles extraction,
-// signature deciphering, and proxied streaming on its own servers.
-// ============================================================================
-
-let cachedInvidiousInstances = null;
-let instancesCacheTime = 0;
-
-/**
- * Dynamically fetch working Invidious instances from the official registry.
- * ALWAYS merges with the hardcoded list to ensure maximum coverage.
- */
-async function getInvidiousInstances() {
-  const now = Date.now();
-  // Cache for 1 hour
-  if (cachedInvidiousInstances && (now - instancesCacheTime) < 3600000) {
-    return cachedInvidiousInstances;
-  }
-
-  // Hardcoded list of well-known instances (always included)
-  const hardcodedInstances = [
-    'https://inv.nadeko.net',
-    'https://invidious.nerdvpn.de',
-    'https://iv.ggtyler.dev',
-    'https://invidious.protokolas.com',
-    'https://yt.cdaut.de',
-    'https://invidious.privacyredirect.com',
-    'https://invidious.drgns.space',
-    'https://invidious.jing.rocks',
-    'https://invidious.einfachzocken.eu',
-    'https://yewtu.be',
-  ];
-
-  let registryInstances = [];
-  try {
-    console.log('[Invidious] Fetching instance list from registry...');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    const response = await fetch('https://api.invidious.io/instances.json?sort_by=api,health', {
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    if (response.ok) {
-      const instances = await response.json();
-      registryInstances = instances
-        .filter(([domain, info]) => info.type === 'https' && info.api === true)
-        .map(([domain, info]) => info.uri || `https://${domain}`)
-        .slice(0, 15);
-      console.log(`[Invidious] Discovered ${registryInstances.length} instances from registry.`);
-    }
-  } catch (e) {
-    console.warn('[Invidious] Failed to fetch registry:', e.message);
-  }
-
-  // Merge and deduplicate: registry instances first, then hardcoded fallbacks
-  const allInstances = [...registryInstances];
-  for (const inst of hardcodedInstances) {
-    if (!allInstances.includes(inst)) {
-      allInstances.push(inst);
-    }
-  }
-
-  console.log(`[Invidious] Total instances to try: ${allInstances.length}`);
-  cachedInvidiousInstances = allInstances;
-  instancesCacheTime = now;
-  return allInstances;
-}
-
-/**
- * Fallback: resolve a proxied audio stream URL via public Invidious instances.
- * Uses ?local=true so the audio is proxied through the Invidious server,
- * avoiding YouTube CDN IP-locking.
- */
-export async function getStreamUrlFromPiped(videoId) {
-  const instances = await getInvidiousInstances();
-
-  for (const instance of instances) {
-    try {
-      console.log(`[Invidious Fallback] Trying: ${instance}`);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-
-      const response = await fetch(`${instance}/api/v1/videos/${videoId}?local=true`, {
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        console.warn(`[Invidious Fallback] ${instance} returned ${response.status}`);
-        continue;
-      }
-
-      const data = await response.json();
-      // Prioritize audio/mp4 (AAC) formats for mobile Safari compatibility
-      let selectedFormat = (data.adaptiveFormats || [])
-        .filter(f => f.type?.includes('audio/mp4'))
-        .sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0))[0];
-
-      if (!selectedFormat) {
-        selectedFormat = (data.adaptiveFormats || [])
-          .filter(f => f.type?.startsWith('audio/'))
-          .sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0))[0];
-      }
-
-      if (selectedFormat && selectedFormat.url) {
-        console.log(`[Invidious Fallback] Resolved from ${instance} (${selectedFormat.type}, ${selectedFormat.bitrate}bps)`);
-        return {
-          url: selectedFormat.url,
-          mimeType: selectedFormat.type?.split(';')[0] || 'audio/mp4'
-        };
-      } else {
-        console.warn(`[Invidious Fallback] ${instance} returned no audio formats`);
-      }
-    } catch (e) {
-      console.warn(`[Invidious Fallback] ${instance} failed: ${e.message}`);
-    }
-  }
-  throw new Error('All Invidious instances failed to resolve stream URL');
-}
-

@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
 import { Readable } from 'stream';
-import { searchMusic, getStreamDetails, getStreamUrlFromPiped, getYTClient } from './services/youtube.js';
+import { searchMusic, getStreamDetails, getAudioStreamUrl, getYTClient } from './services/youtube.js';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { OAuth2Client } from 'google-auth-library';
@@ -75,17 +75,38 @@ fastify.get('/api/search', async (request, reply) => {
  */
 fastify.get('/api/lyrics/:id', async (request, reply) => {
   const { id } = request.params;
+  const { title, artist } = request.query;
   if (!id) {
     return reply.status(400).send({ error: 'Track ID is required' });
   }
 
   try {
+    if (title && artist) {
+      try {
+        const qs = new URLSearchParams({ track_name: title, artist_name: artist }).toString();
+        const lrclibRes = await fetch(`https://lrclib.net/api/search?${qs}`);
+        if (lrclibRes.ok) {
+          const lrclibData = await lrclibRes.json();
+          if (lrclibData && lrclibData.length > 0) {
+            const bestMatch = lrclibData[0];
+            if (bestMatch.syncedLyrics) {
+              return { lyrics: bestMatch.syncedLyrics, source: 'LRCLIB (Synced)' };
+            } else if (bestMatch.plainLyrics) {
+              return { lyrics: bestMatch.plainLyrics, source: 'LRCLIB' };
+            }
+          }
+        }
+      } catch (err) {
+        fastify.log.warn(`[LRCLIB] Failed: ${err.message}`);
+      }
+    }
+
     const client = await getYTClient();
     const lyrics = await client.music.getLyrics(id);
     if (lyrics && lyrics.description) {
       return {
         lyrics: lyrics.description.text || 'Lyrics not available.',
-        source: lyrics.footer?.text || ''
+        source: lyrics.footer?.text || 'YouTube Music'
       };
     }
     return { lyrics: 'Lyrics not available.', source: '' };
@@ -142,96 +163,36 @@ fastify.get('/api/stream/:id', async (request, reply) => {
     return reply.status(400).send({ error: 'Track ID is required' });
   }
 
-  // Method 1: Try direct streaming with cached client & Range request support
   try {
-    const { client, info } = await getStreamDetails(id);
-    fastify.log.info(`[Streaming Proxy] Video: ${id}, resolving direct format url...`);
+    fastify.log.info(`[Streaming Proxy] Resolving direct audio stream for: ${id}`);
+    const streamInfo = await getAudioStreamUrl(id);
 
-    const formats = info.streaming_data?.adaptive_formats || [];
-    // Prioritize audio/mp4 (AAC) formats for universal mobile browser compatibility (iOS Safari / mobile Chrome)
-    let audioFormat = formats.find(f => f.mime_type?.includes('audio/mp4'));
-    if (!audioFormat) {
-      audioFormat = formats.filter(f => f.mime_type?.includes('audio'))[0];
-    }
-    
-    if (!audioFormat) {
-      throw new Error('No audio format found in streaming metadata');
+    const headers = {};
+    if (request.headers.range) {
+      headers.Range = request.headers.range;
     }
 
-    // Decipher the signature if URL is missing (signature-protected tracks)
-    if (!audioFormat.url && typeof audioFormat.decipher === 'function') {
-      fastify.log.info(`[Streaming Proxy] Signature cipher detected, deciphering stream URL...`);
-      audioFormat.url = await audioFormat.decipher(client.session.player);
-    }
-
-    if (!audioFormat.url) {
-      throw new Error('No direct stream URL found in format after deciphering');
-    }
-
-    // Forward the Range header from the client to YouTube CDN
-    const rangeHeader = request.headers.range;
-    const fetchHeaders = {};
-    if (rangeHeader) {
-      fetchHeaders.Range = rangeHeader;
-    }
-
-    const response = await fetch(audioFormat.url, { headers: fetchHeaders });
+    const response = await fetch(streamInfo.url, { headers });
     if (!response.ok && response.status !== 206) {
-      throw new Error(`YouTube CDN returned ${response.status} ${response.statusText}`);
-    }
-
-    // Bypass Fastify's chunking wrapper by writing directly to the Node.js raw response object.
-    // This preserves exact Content-Length headers, preventing Safari from incorrectly doubling audio duration.
-    const rawRes = reply.raw;
-    const headers = {
-      'content-type': response.headers.get('content-type') || audioFormat.mime_type,
-      'accept-ranges': 'bytes',
-      'cache-control': 'public, max-age=31536000',
-    };
-
-    if (response.headers.has('content-length')) {
-      headers['content-length'] = response.headers.get('content-length');
-    }
-    if (response.headers.has('content-range')) {
-      headers['content-range'] = response.headers.get('content-range');
-    }
-
-    rawRes.writeHead(response.status, headers);
-    
-    const nodeStream = Readable.fromWeb(response.body);
-    nodeStream.pipe(rawRes);
-    
-    reply.sent = true;
-    return;
-  } catch (primaryError) {
-    fastify.log.warn(`[Streaming Proxy] Primary download failed for ${id}: ${primaryError.message}`);
-  }
-
-  // Method 2: Fallback to Piped API (open-source YouTube proxy)
-  try {
-    fastify.log.info(`[Streaming Proxy] Video: ${id}, trying Piped API fallback...`);
-    const streamInfo = await getStreamUrlFromPiped(id);
-
-    const response = await fetch(streamInfo.url);
-    if (!response.ok && response.status !== 206) {
-      throw new Error(`Piped CDN returned ${response.status} ${response.statusText}`);
+      throw new Error(`Upstream CDN returned ${response.status} ${response.statusText}`);
     }
 
     reply.status(response.status);
-    reply.header('content-type', response.headers.get('content-type') || streamInfo.mimeType);
+    reply.header('content-type', response.headers.get('content-type') || streamInfo.mimeType || 'audio/mp4');
+    reply.header('accept-ranges', 'bytes');
+    reply.header('cache-control', 'public, max-age=31536000');
+
     if (response.headers.has('content-length')) {
       reply.header('content-length', response.headers.get('content-length'));
     }
     if (response.headers.has('content-range')) {
       reply.header('content-range', response.headers.get('content-range'));
     }
-    reply.header('accept-ranges', 'bytes');
-    reply.header('cache-control', 'public, max-age=31536000');
 
     const nodeStream = Readable.fromWeb(response.body);
     return reply.send(nodeStream);
-  } catch (fallbackError) {
-    fastify.log.error(`[Streaming Proxy] Piped fallback also failed for ${id}: ${fallbackError.message}`);
+  } catch (error) {
+    fastify.log.error(`[Streaming Proxy] Failed to stream audio for ${id}: ${error.message}`);
     return reply.status(500).send({ error: 'Failed to resolve or stream audio' });
   }
 });
