@@ -66,7 +66,7 @@ export async function getAudioStreamUrl(videoId) {
   for (const proxyUrl of proxyList) {
     try {
       const proxyArg = proxyUrl ? `--proxy "${proxyUrl}" ` : '';
-      const cmd = `yt-dlp ${proxyArg}-f "140/ba[ext=m4a]/bestaudio" -g "https://www.youtube.com/watch?v=${videoId}"`;
+      const cmd = `yt-dlp ${proxyArg}--extractor-args "youtube:client=ios" -f "140/ba[ext=m4a]/bestaudio" -g "https://www.youtube.com/watch?v=${videoId}"`;
       const { stdout } = await execPromise(cmd, {
         env: {
           ...process.env,
